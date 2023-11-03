@@ -1,0 +1,85 @@
+diff --git a/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90 b/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90.new
+index db8bc33..30975a9 100644
+--- a/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90
++++ b/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90.new
+@@ -22,6 +22,12 @@ use MOM_grid,                  only: ocean_grid_type
+ use MOM_domains,               only: pass_var
+ use mpp_domains_mod,           only: mpp_get_compute_domain
+ 
++#ifdef _USE_GENERIC_TRACER
++use MOM_coupler_types,         only: coupler_1d_bc_type
++use MOM_ocean_model_nuopc,     only: ocean_model_flux_init
++use atmos_ocean_fluxes_mod,    only: atmos_ocean_type_fluxes_init, atmos_ocean_fluxes_init
++#endif
++
+ ! By default make data private
+ implicit none; private
+ 
+@@ -29,6 +35,7 @@ implicit none; private
+ public :: mom_set_geomtype
+ public :: mom_import
+ public :: mom_export
++public :: gas_exchange_init
+ public :: state_diagnose
+ public :: ChkErr
+ 
+@@ -58,6 +65,23 @@ real(ESMF_KIND_R8), public, allocatable :: mod2med_areacor(:) ! ratios of model
+ real(ESMF_KIND_R8), public, allocatable :: med2mod_areacor(:) ! ratios of input mesh areas to model areas
+ character(len=*),parameter :: u_FILE_u =  __FILE__
+ 
++!> FMS BC types for additional tracer fields when using generic tracers
++#ifdef _USE_GENERIC_TRACER
++logical :: gas_fluxes_initialized = .false.  ! This is set to true when the following types are initialized.
++type(coupler_1d_bc_type), target :: ex_gas_fields_atm  ! gas fields in atm
++    !< Structure containing atmospheric surface variables that are used in the
++    !! calculation of the atmosphere-ocean gas fluxes, as well as parameters
++    !! regulating these fluxes.
++type(coupler_1d_bc_type), target :: ex_gas_fields_ocn  ! gas fields atop the ocean
++    !< Structure containing ocean surface variables that are used in the
++    !! calculation of the atmosphere-ocean gas fluxes, as well as parameters
++    !! regulating these fluxes.
++type(coupler_1d_bc_type), target :: ex_gas_fluxes      ! gas fluxes between the atm and ocean
++    !< A structure for exchanging gas or tracer fluxes between the atmosphere and ocean,
++    !! defined by the field table, as well as a place holder of intermediate calculations,
++    !! such as piston velocities, and parameters that impact the fluxes.
++#endif
++
+ contains
+ 
+ !> Sets module variable geometry type
+@@ -1098,4 +1122,35 @@ logical function ChkErr(rc, line, file)
+   endif
+ end function ChkErr
+ 
++!> \brief Gas and tracer field initialization routine for running with MOM generic tracers.
++!! Copied and adapted slightly from
++!! https://github.com/NOAA-GFDL/FMScoupler/blob/77618869f48507c8629f28457cb701e25e1ea4fc/full/flux_exchange.F90#L626.
++subroutine gas_exchange_init (gas_fields_atm, gas_fields_ocn, gas_fluxes)
++  type(coupler_1d_bc_type), optional, pointer :: gas_fields_atm
++    !< Pointer to a structure containing atmospheric surface variables that
++    !! are used in the calculation of the atmosphere-ocean gas fluxes, as well
++    !! as parameters regulating these fluxes.
++  type(coupler_1d_bc_type), optional, pointer :: gas_fields_ocn
++    !< Pointer to a structure containing ocean surface variables that are 
++    !! used in the calculation of the atmosphere-ocean gas fluxes, as well as
++    !! parameters regulating these fluxes.
++  type(coupler_1d_bc_type), optional, pointer :: gas_fluxes
++    !< Pointer to a s structure for exchanging gas or tracer fluxes between the
++    !! atmosphere and ocean, defined by the field table, as well as a place holder
++    !! of intermediate calculations, such as piston velocities, and parameters
++    !! that impact the fluxes.
++
++  if (.not.gas_fluxes_initialized) then
++    call atmos_ocean_type_fluxes_init( )
++    call ocean_model_flux_init( )
++    call atmos_ocean_fluxes_init(ex_gas_fluxes, ex_gas_fields_atm, ex_gas_fields_ocn)
++    gas_fluxes_initialized = .true.
++  endif
++
++  if (present(gas_fields_atm)) gas_fields_atm => ex_gas_fields_atm
++  if (present(gas_fields_ocn)) gas_fields_ocn => ex_gas_fields_ocn
++  if (present(gas_fluxes)) gas_fluxes => ex_gas_fluxes
++
++end subroutine gas_exchange_init
++
+ end module MOM_cap_methods
