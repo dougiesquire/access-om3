@@ -1,6 +1,25 @@
---- MOM6/config_src/drivers/nuopc_cap/mom_cap.F90	2023-08-31 10:49:33.115826000 +1000
-+++ MOM6/config_src/drivers/nuopc_cap/mom_cap.F90.new	2023-08-31 10:50:34.446781000 +1000
-@@ -1672,7 +1672,7 @@
+diff --git a/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90 b/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90.new
+index 2841c71..c06ec3e 100644
+--- a/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90
++++ b/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90.new
+@@ -2,6 +2,7 @@
+ 
+ module MOM_cap_mod
+ 
++use field_manager_mod,        only: field_manager_init, field_manager_end
+ use MOM_domains,              only: get_domain_extent
+ use MOM_io,                   only: stdout, io_infra_end
+ use mpp_domains_mod,          only: mpp_get_compute_domains
+@@ -498,6 +499,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+   if (chkerr(rc,__LINE__,u_FILE_u)) return
+   call MOM_infra_init(mpi_comm_mom)
+ 
++  call field_manager_init
++
+   ! determine the calendar
+   if (cesm_coupled) then
+     call NUOPC_CompAttributeGet(gcomp, name="calendar", value=cvalue, &
+@@ -1667,7 +1670,7 @@ subroutine ModelAdvance(gcomp, rc)
        ! determine restart filename
        call ESMF_ClockGetNextTime(clock, MyTime, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -9,3 +28,11 @@
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
  
        if (cesm_coupled) then
+@@ -1983,6 +1986,7 @@ subroutine ocean_model_finalize(gcomp, rc)
+                          ESMF_LOGMSG_INFO)
+ 
+   call ocean_model_end(ocean_public, ocean_State, Time, write_restart=write_restart)
++  call field_manager_end()
+ 
+   call io_infra_end()
+   call MOM_infra_end()
