@@ -31,7 +31,7 @@ for BUILD_TYPE in "${BUILD_TYPES[@]}"; do
   rm -r build || true
   INSTALL_DIR=${SCRIPT_DIR}/${BUILD_TYPE}
 
-  cmake -S . -B build --preset=gadi -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DCMAKE_VERBOSE_MAKEFILE=ON
+  cmake -S . -B build --preset=gadi -DCMAKE_BUILD_TYPE=${BUILD_TYPE} -DCMAKE_VERBOSE_MAKEFILE=ON -DOM3_ENABLE_CICE6-WW3=OFF -DOM3_ENABLE_MOM6-CICE6-WW3=OFF
   cmake --build build -j 4
   cmake --install build --prefix=${INSTALL_DIR}
 

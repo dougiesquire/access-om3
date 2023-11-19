@@ -1,5 +1,5 @@
 diff --git a/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90 b/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90.new
-index db8bc33..30975a9 100644
+index db8bc33..bc10a8d 100644
 --- a/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90
 +++ b/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90.new
 @@ -22,6 +22,12 @@ use MOM_grid,                  only: ocean_grid_type
@@ -23,12 +23,13 @@ index db8bc33..30975a9 100644
  public :: state_diagnose
  public :: ChkErr
  
-@@ -58,6 +65,23 @@ real(ESMF_KIND_R8), public, allocatable :: mod2med_areacor(:) ! ratios of model
+@@ -58,6 +65,24 @@ real(ESMF_KIND_R8), public, allocatable :: mod2med_areacor(:) ! ratios of model
  real(ESMF_KIND_R8), public, allocatable :: med2mod_areacor(:) ! ratios of input mesh areas to model areas
  character(len=*),parameter :: u_FILE_u =  __FILE__
  
 +!> FMS BC types for additional tracer fields when using generic tracers
 +#ifdef _USE_GENERIC_TRACER
++logical :: use_generic_tracer = .true.
 +logical :: gas_fluxes_initialized = .false.  ! This is set to true when the following types are initialized.
 +type(coupler_1d_bc_type), target :: ex_gas_fields_atm  ! gas fields in atm
 +    !< Structure containing atmospheric surface variables that are used in the
@@ -47,7 +48,24 @@ index db8bc33..30975a9 100644
  contains
  
  !> Sets module variable geometry type
-@@ -1098,4 +1122,35 @@ logical function ChkErr(rc, line, file)
+@@ -356,6 +381,16 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
+       deallocate(stkx,stky)
+   endif
+ 
++  !---
++  ! Tracer flux fields for generic tracers
++  !---
++  ! if (use_generic_tracer) then
++  !   ex_gas_fluxes (:,:) = 0._ESMF_KIND_R8
++  !   call state_getimport(importState, 'field',  &
++  !       isc, iec, jsc, jec, ex_gas_fluxes, areacor=med2mod_areacor, rc=rc)
++  !   if (ChkErr(rc,__LINE__,u_FILE_u)) return
++  ! endif
++
+ end subroutine mom_import
+ 
+ !> Maps outgoing ocean data to ESMF State
+@@ -1098,4 +1133,35 @@ logical function ChkErr(rc, line, file)
    endif
  end function ChkErr
  
@@ -64,7 +82,7 @@ index db8bc33..30975a9 100644
 +    !! used in the calculation of the atmosphere-ocean gas fluxes, as well as
 +    !! parameters regulating these fluxes.
 +  type(coupler_1d_bc_type), optional, pointer :: gas_fluxes
-+    !< Pointer to a s structure for exchanging gas or tracer fluxes between the
++    !< Pointer to a structure for exchanging gas or tracer fluxes between the
 +    !! atmosphere and ocean, defined by the field table, as well as a place holder
 +    !! of intermediate calculations, such as piston velocities, and parameters
 +    !! that impact the fluxes.
