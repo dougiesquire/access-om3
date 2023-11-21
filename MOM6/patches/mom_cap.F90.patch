@@ -1,15 +1,18 @@
 diff --git a/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90 b/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90.new
-index 2841c71..c69a046 100644
+index 2841c71..f221a02 100644
 --- a/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90
 +++ b/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90.new
-@@ -2,6 +2,7 @@
+@@ -2,8 +2,9 @@
  
  module MOM_cap_mod
  
 +use field_manager_mod,        only: field_manager_init, field_manager_end
  use MOM_domains,              only: get_domain_extent
- use MOM_io,                   only: stdout, io_infra_end
+-use MOM_io,                   only: stdout, io_infra_end
++use MOM_io,                   only: stdout, io_infra_end, slasher
  use mpp_domains_mod,          only: mpp_get_compute_domains
+ use mpp_domains_mod,          only: mpp_get_ntile_count, mpp_get_pelist, mpp_get_global_domain
+ use mpp_domains_mod,          only: mpp_get_domain_npes
 @@ -36,6 +37,16 @@ use nuopc_shr_methods,       only: get_component_instance
  #endif
  use time_utils_mod,           only: esmf2fms_time
@@ -127,9 +130,11 @@ index 2841c71..c69a046 100644
    call query_ocean_state(ocean_state, use_waves=use_waves, wave_method=wave_method)
    if (use_waves) then
      if (wave_method == "EFACTOR") then
-@@ -1510,6 +1571,9 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1509,7 +1570,11 @@ subroutine ModelAdvance(gcomp, rc)
+   character(len=*),parameter             :: subname='(MOM_cap:ModelAdvance)'
    character(len=8)                       :: suffix
    character(len=:), allocatable          :: rpointer_filename
++  character(240)                         :: additional_restart_dir
    integer                                :: num_rest_files
 +  type(directories)                      :: dirs
 +  type(FmsNetcdfDomainFile_t), dimension(:), pointer :: ocn_bc_restart => NULL()
@@ -137,7 +142,7 @@ index 2841c71..c69a046 100644
  
    rc = ESMF_SUCCESS
    if(profile_memory) call ESMF_VMLogMemInfo("Entering MOM Model_ADVANCE: ")
-@@ -1667,7 +1731,7 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1667,7 +1732,7 @@ subroutine ModelAdvance(gcomp, rc)
        ! determine restart filename
        call ESMF_ClockGetNextTime(clock, MyTime, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -146,18 +151,22 @@ index 2841c71..c69a046 100644
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
  
        if (cesm_coupled) then
-@@ -1725,6 +1789,23 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1725,6 +1790,27 @@ subroutine ModelAdvance(gcomp, rc)
  
        endif
  
 +      ! write restart file for generic_tracer coupler flux terms
 +      ! see https://github.com/NOAA-GFDL/FMScoupler/blob/main/full/coupler_main.F90#L2086
 +      if (use_generic_tracer) then
-+        call get_MOM_input(dirs=dirs)
-+        ! TODO: I'm currently writing this to the existing log dir as a horrible hack to make the restart 
-+        ! handling easy with Payu, but will need to do something better for production
++        additional_restart_dir = "RESTART/"
++        call NUOPC_CompAttributeGet(gcomp, name="additional_restart_dir", value=cvalue, &
++            isPresent=isPresent, isSet=isSet, rc=rc)
++        if (ChkErr(rc,__LINE__,u_FILE_u)) return
++        if (isPresent .and. isSet) additional_restart_dir = slasher(cvalue)
++        call ESMF_LogWrite('MOM_cap:additional_restart_dir = '//trim(additional_restart_dir), ESMF_LOGMSG_INFO)
++
 +        call coupler_type_register_restarts(ocean_public%fields, ocn_bc_restart, num_ocn_bc_restart, &
-+              ocean_public%domain, to_read=.false., ocean_restart=.true., directory="log/")
++              ocean_public%domain, to_read=.false., ocean_restart=.true., directory=additional_restart_dir)
 +        do n = 1, num_ocn_bc_restart
 +          if (fms2_check_if_open(ocn_bc_restart(n))) then
 +            call fms2_write_restart(ocn_bc_restart(n))
@@ -170,7 +179,7 @@ index 2841c71..c69a046 100644
        if (is_root_pe()) then
          write(stdout,*) subname//' writing restart file ',trim(restartname)
        endif
-@@ -1984,6 +2065,12 @@ subroutine ocean_model_finalize(gcomp, rc)
+@@ -1984,6 +2070,12 @@ subroutine ocean_model_finalize(gcomp, rc)
  
    call ocean_model_end(ocean_public, ocean_State, Time, write_restart=write_restart)
  
@@ -183,7 +192,7 @@ index 2841c71..c69a046 100644
    call io_infra_end()
    call MOM_infra_end()
  
-@@ -2207,6 +2294,26 @@ subroutine shr_log_setLogUnit(nunit)
+@@ -2207,6 +2299,26 @@ subroutine shr_log_setLogUnit(nunit)
  end subroutine shr_log_setLogUnit
  #endif
  
