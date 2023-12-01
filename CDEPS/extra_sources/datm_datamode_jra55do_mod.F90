@@ -67,7 +67,7 @@ contains
 !===============================================================================
 
   subroutine datm_datamode_jra55do_advertise(exportState, fldsexport, flds_scalar_name, &
-       flds_co2, flds_wiso, flds_presaero, flds_presndep, rc)
+       flds_co2, flds_wiso, flds_presaero, flds_presndep, flds_o2, rc)
 
     ! input/output variables
     type(esmf_State)   , intent(inout) :: exportState
@@ -77,6 +77,7 @@ contains
     logical            , intent(in)    :: flds_wiso
     logical            , intent(in)    :: flds_presaero
     logical            , intent(in)    :: flds_presndep
+    logical            , intent(in)    :: flds_o2
     integer            , intent(out)   :: rc
 
     ! local variables
@@ -110,6 +111,9 @@ contains
     if (flds_co2) then
        call dshr_fldList_add(fldsExport, 'Sa_co2prog')
        call dshr_fldList_add(fldsExport, 'Sa_co2diag')
+    end if
+    if (flds_o2) then
+       call dshr_fldList_add(fldsExport, 'Sa_o2')
     end if
     if (flds_presaero) then
        call dshr_fldList_add(fldsExport, 'Faxa_bcph'   , ungridded_lbound=1, ungridded_ubound=3)

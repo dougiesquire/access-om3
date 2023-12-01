@@ -1,6 +1,8 @@
---- CDEPS/datm/atm_comp_nuopc.F90	2023-08-31 10:49:23.508874000 +1000
-+++ extra_sources/atm_comp_nuopc.F90	2023-08-31 10:48:55.428272000 +1000
-@@ -52,6 +52,12 @@
+diff --git a/CDEPS/datm/atm_comp_nuopc.F90 b/CDEPS/datm/atm_comp_nuopc.F90.new
+index 5e504a0..02026e8 100644
+--- a/CDEPS/datm/atm_comp_nuopc.F90
++++ b/CDEPS/datm/atm_comp_nuopc.F90.new
+@@ -52,6 +52,12 @@ module cdeps_datm_comp
    use datm_datamode_jra_mod     , only : datm_datamode_jra_restart_write
    use datm_datamode_jra_mod     , only : datm_datamode_jra_restart_read
  
@@ -13,7 +15,67 @@
    use datm_datamode_clmncep_mod , only : datm_datamode_clmncep_advertise
    use datm_datamode_clmncep_mod , only : datm_datamode_clmncep_init_pointers
    use datm_datamode_clmncep_mod , only : datm_datamode_clmncep_advance
-@@ -342,6 +348,7 @@
+@@ -127,6 +133,7 @@ module cdeps_datm_comp
+   logical                      :: flds_presndep = .false.             ! true => send valid prescribed ndep fields to mediator
+   logical                      :: flds_preso3 = .false.               ! true => send valid prescribed ozone fields to mediator
+   logical                      :: flds_co2 = .false.                  ! true => send prescribed co2 to mediator
++  logical                      :: flds_o2 = .false.                   ! true => send prescribed o2 to mediator
+   logical                      :: flds_wiso = .false.                 ! true => send water isotopes to mediator
+ 
+   character(CL)                :: bias_correct = nullstr              ! send bias correction fields to coupler
+@@ -223,7 +230,7 @@ contains
+     ! local variables
+     integer           :: nu         ! unit number
+     integer           :: ierr       ! error code
+-    integer           :: bcasttmp(10)
++    integer           :: bcasttmp(11)
+     type(ESMF_VM)     :: vm
+     character(len=*),parameter :: subname=trim(modName) // ':(InitializeAdvertise) '
+     character(*)    ,parameter :: F00 = "('(" // trim(modName) // ") ',8a)"
+@@ -249,7 +256,8 @@ contains
+          skip_restart_read, &
+          flds_presndep, &
+          flds_preso3, &
+-         export_all
++         export_all, &
++         flds_o2
+ 
+     rc = ESMF_SUCCESS
+ 
+@@ -287,6 +295,7 @@ contains
+        if(flds_wiso)         bcasttmp(8) = 1
+        if(skip_restart_read) bcasttmp(9) = 1
+        if(export_all)        bcasttmp(10) = 1
++       if(flds_o2)           bcasttmp(11) = 1
+     end if
+     call ESMF_GridCompGet(gcomp, vm=vm, rc=rc)
+     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+@@ -307,7 +316,7 @@ contains
+     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+     call ESMF_VMBroadcast(vm, restfilm, CL, main_task, rc=rc)
+     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+-    call ESMF_VMBroadcast(vm, bcasttmp, 10, main_task, rc=rc)
++    call ESMF_VMBroadcast(vm, bcasttmp, 11, main_task, rc=rc)
+     if (ChkErr(rc,__LINE__,u_FILE_u)) return
+     nx_global         = bcasttmp(1)
+     ny_global         = bcasttmp(2)
+@@ -319,6 +328,7 @@ contains
+     flds_wiso         = (bcasttmp(8) == 1)
+     skip_restart_read = (bcasttmp(9) == 1)
+     export_all        = (bcasttmp(10) == 1)
++    flds_o2           = (bcasttmp(11) == 1)
+ 
+     ! write namelist input to standard out
+     if (my_task == main_task) then
+@@ -339,6 +349,7 @@ contains
+        write(logunit,F02)' flds_wiso      = ',flds_wiso
+        write(logunit,F02)' skip_restart_read = ',skip_restart_read
+        write(logunit,F02)' export_all     = ',export_all
++       write(logunit,F02)' flds_o2        = ',flds_o2
+     end if
+ 
+     ! Validate sdat datamode
+@@ -346,6 +357,7 @@ contains
      if ( trim(datamode) == 'CORE2_NYF'    .or. &
           trim(datamode) == 'CORE2_IAF'    .or. &
           trim(datamode) == 'CORE_IAF_JRA' .or. &
@@ -21,18 +83,18 @@
           trim(datamode) == 'CLMNCEP'      .or. &
           trim(datamode) == 'CPLHIST'      .or. &
           trim(datamode) == 'GEFS'         .or. &
-@@ -361,6 +368,10 @@
+@@ -365,6 +377,10 @@ contains
         call datm_datamode_jra_advertise(exportState, fldsExport, flds_scalar_name, &
              flds_co2, flds_wiso, flds_presaero, flds_presndep, rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
 +    case ('CORE_IAF_JRA55do')
 +       call datm_datamode_jra55do_advertise(exportState, fldsExport, flds_scalar_name, &
-+            flds_co2, flds_wiso, flds_presaero, flds_presndep, rc)
++            flds_co2, flds_wiso, flds_presaero, flds_presndep, flds_o2, rc)
 +       if (ChkErr(rc,__LINE__,u_FILE_u)) return
      case ('CLMNCEP')
         call datm_datamode_clmncep_advertise(exportState, fldsExport, flds_scalar_name, &
              flds_co2, flds_wiso, flds_presaero, flds_presndep, flds_preso3, rc)
-@@ -606,6 +617,9 @@
+@@ -610,6 +626,9 @@ contains
         case('CORE_IAF_JRA')
            call datm_datamode_jra_init_pointers(exportState, sdat, rc)
            if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -42,7 +104,7 @@
         case('CLMNCEP')
            call datm_datamode_clmncep_init_pointers(importState, exportState, sdat, rc)
            if (ChkErr(rc,__LINE__,u_FILE_u)) return
-@@ -630,6 +644,8 @@
+@@ -634,6 +653,8 @@ contains
               call datm_datamode_core2_restart_read(restfilm, inst_suffix, logunit, my_task, mpicom, sdat)
            case('CORE_IAF_JRA')
               call datm_datamode_jra_restart_read(restfilm, inst_suffix, logunit, my_task, mpicom, sdat)
@@ -51,7 +113,7 @@
            case('CLMNCEP')
               call datm_datamode_clmncep_restart_read(restfilm, inst_suffix, logunit, my_task, mpicom, sdat)
            case('CPLHIST')
-@@ -677,6 +693,9 @@
+@@ -681,6 +702,9 @@ contains
      case('CORE_IAF_JRA')
         call datm_datamode_jra_advance(exportstate, target_ymd, target_tod, sdat%model_calendar, rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -61,7 +123,7 @@
      case('CLMNCEP')
         call datm_datamode_clmncep_advance(mainproc, logunit, mpicom,  rc)
         if (ChkErr(rc,__LINE__,u_FILE_u)) return
-@@ -705,6 +724,9 @@
+@@ -709,6 +733,9 @@ contains
         case('CORE_IAF_JRA')
            call datm_datamode_jra_restart_write(case_name, inst_suffix, target_ymd, target_tod, &
                 logunit, my_task, sdat)

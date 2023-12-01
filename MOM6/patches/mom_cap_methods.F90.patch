@@ -1,13 +1,15 @@
 diff --git a/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90 b/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90.new
-index db8bc33..bc10a8d 100644
+index db8bc33..0b976be 100644
 --- a/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90
 +++ b/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90.new
-@@ -22,6 +22,12 @@ use MOM_grid,                  only: ocean_grid_type
+@@ -22,6 +22,14 @@ use MOM_grid,                  only: ocean_grid_type
  use MOM_domains,               only: pass_var
  use mpp_domains_mod,           only: mpp_get_compute_domain
  
 +#ifdef _USE_GENERIC_TRACER
-+use MOM_coupler_types,         only: coupler_1d_bc_type
++use MOM_coupler_types,         only: coupler_1d_bc_type, coupler_2d_bc_type
++use MOM_coupler_types,         only: set_coupler_type_data, coupler_type_spawn
++use coupler_types_mod,         only: ind_pcair, ind_u10, ind_psurf
 +use MOM_ocean_model_nuopc,     only: ocean_model_flux_init
 +use atmos_ocean_fluxes_mod,    only: atmos_ocean_type_fluxes_init, atmos_ocean_fluxes_init
 +#endif
@@ -15,7 +17,7 @@ index db8bc33..bc10a8d 100644
  ! By default make data private
  implicit none; private
  
-@@ -29,6 +35,7 @@ implicit none; private
+@@ -29,6 +37,7 @@ implicit none; private
  public :: mom_set_geomtype
  public :: mom_import
  public :: mom_export
@@ -23,7 +25,7 @@ index db8bc33..bc10a8d 100644
  public :: state_diagnose
  public :: ChkErr
  
-@@ -58,6 +65,24 @@ real(ESMF_KIND_R8), public, allocatable :: mod2med_areacor(:) ! ratios of model
+@@ -58,6 +67,30 @@ real(ESMF_KIND_R8), public, allocatable :: mod2med_areacor(:) ! ratios of model
  real(ESMF_KIND_R8), public, allocatable :: med2mod_areacor(:) ! ratios of input mesh areas to model areas
  character(len=*),parameter :: u_FILE_u =  __FILE__
  
@@ -34,38 +36,87 @@ index db8bc33..bc10a8d 100644
 +type(coupler_1d_bc_type), target :: ex_gas_fields_atm  ! gas fields in atm
 +    !< Structure containing atmospheric surface variables that are used in the
 +    !! calculation of the atmosphere-ocean gas fluxes, as well as parameters
-+    !! regulating these fluxes.
++    !! regulating these fluxes. The fields in this structure are never actually
++    !! set, but the structure is used for initialisation of components and to 
++    !! spawn other structure whose fields are set.
 +type(coupler_1d_bc_type), target :: ex_gas_fields_ocn  ! gas fields atop the ocean
 +    !< Structure containing ocean surface variables that are used in the
 +    !! calculation of the atmosphere-ocean gas fluxes, as well as parameters
-+    !! regulating these fluxes.
++    !! regulating these fluxes. The fields in this structure are never actually
++    !! set, but the structure is used for initialisation of components and to 
++    !! spawn other structure whose fields are set.
 +type(coupler_1d_bc_type), target :: ex_gas_fluxes      ! gas fluxes between the atm and ocean
 +    !< A structure for exchanging gas or tracer fluxes between the atmosphere and ocean,
 +    !! defined by the field table, as well as a place holder of intermediate calculations,
-+    !! such as piston velocities, and parameters that impact the fluxes.
++    !! such as piston velocities, and parameters that impact the fluxes. The fields in this 
++    !! structure are never actually set, but the structure is used for initialisation of
++    !! components and to spawn other structure whose fields are set.
 +#endif
 +
  contains
  
  !> Sets module variable geometry type
-@@ -356,6 +381,16 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
+@@ -89,7 +122,9 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
+   real(ESMF_KIND_R8), allocatable :: tauy(:,:)
+   real(ESMF_KIND_R8), allocatable :: stkx(:,:,:)
+   real(ESMF_KIND_R8), allocatable :: stky(:,:,:)
++  real(ESMF_KIND_R8), allocatable :: work(:,:)
+   character(len=*)  , parameter   :: subname = '(mom_import)'
++  type(coupler_2d_bc_type)        :: atm_fields ! gas fields from atm used to calculate generic tracer fluxes
+ 
+   rc = ESMF_SUCCESS
+ 
+@@ -356,6 +391,49 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
        deallocate(stkx,stky)
    endif
  
 +  !---
 +  ! Tracer flux fields for generic tracers
 +  !---
-+  ! if (use_generic_tracer) then
-+  !   ex_gas_fluxes (:,:) = 0._ESMF_KIND_R8
-+  !   call state_getimport(importState, 'field',  &
-+  !       isc, iec, jsc, jec, ex_gas_fluxes, areacor=med2mod_areacor, rc=rc)
-+  !   if (ChkErr(rc,__LINE__,u_FILE_u)) return
-+  ! endif
++  if (use_generic_tracer) then
++    call coupler_type_spawn(ex_gas_fields_atm, atm_fields, (/isc,isc,iec,iec/), &
++                              (/jsc,jsc,jec,jec/), as_needed=.true.)
++
++    do n = 1, atm_fields%num_bcs
++      ! TODO: need better logic here to determine which fields to import
++      if (atm_fields%bc(n)%name .eq. 'co2_flux') then
++        call ESMF_LogWrite('generic_tracer:coupling generic_tracer flux: '//trim(atm_fields%bc(n)%name), ESMF_LOGMSG_INFO)
++        allocate (work(isc:iec,jsc:jec))
++        call state_getimport(importState, 'Sa_co2prog', isc, iec, jsc, jec, work, rc=rc)
++        if (ChkErr(rc,__LINE__,u_FILE_u)) return
++        call set_coupler_type_data(work, n, atm_fields, &
++              idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_pcair)
++        deallocate(work)
++      elseif (atm_fields%bc(n)%name .eq. 'o2_flux') then
++        call ESMF_LogWrite('generic_tracer:coupling generic_tracer flux: '//trim(atm_fields%bc(n)%name), ESMF_LOGMSG_INFO)
++        allocate (work(isc:iec,jsc:jec))
++        call state_getimport(importState, 'Sa_o2', isc, iec, jsc, jec, work, rc=rc)
++        if (ChkErr(rc,__LINE__,u_FILE_u)) return
++        call set_coupler_type_data(work, n, atm_fields, &
++              idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_pcair)
++        deallocate(work)
++      else
++        call ESMF_LogWrite('generic_tracer:uncoupled fields for generic_tracer flux: '//trim(atm_fields%bc(n)%name), ESMF_LOGMSG_INFO)
++      endif
++      if ( &
++          atm_fields%bc(n)%flux_type .eq. 'air_sea_gas_flux_generic' .or. &
++          atm_fields%bc(n)%flux_type .eq. 'air_sea_gas_flux' &
++         ) then
++        call ESMF_LogWrite('generic_tracer:adding ind_u10 and ind_psurf fields', ESMF_LOGMSG_INFO)
++        call set_coupler_type_data(sqrt(ice_ocean_boundary%u10_sqr), n, atm_fields, &
++              idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_u10)
++        call set_coupler_type_data(ice_ocean_boundary%p, n, atm_fields, &
++              idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_psurf)
++      endif
++    enddo
++
++    ! Calculate fluxes from ocean_public%fields and atm_fields into ice_ocean_boundary%fluxes
++  endif
 +
  end subroutine mom_import
  
  !> Maps outgoing ocean data to ESMF State
-@@ -1098,4 +1133,35 @@ logical function ChkErr(rc, line, file)
+@@ -1098,4 +1176,35 @@ logical function ChkErr(rc, line, file)
    endif
  end function ChkErr
  

@@ -1,0 +1,26 @@
+diff --git a/CMEPS/mediator/esmFldsExchange_cesm_mod.F90 b/CMEPS/mediator/esmFldsExchange_cesm_mod.F90.new
+index 13811ae..b4fb9c4 100644
+--- a/CMEPS/mediator/esmFldsExchange_cesm_mod.F90
++++ b/CMEPS/mediator/esmFldsExchange_cesm_mod.F90.new
+@@ -2342,6 +2342,21 @@ contains
+        end if
+     end if
+ 
++    ! ---------------------------------------------------------------------
++    ! to ocn: O2 concentration from atm
++    ! ---------------------------------------------------------------------
++    if (phase == 'advertise') then
++       call addfld_from(compatm, 'Sa_o2')
++       call addfld_to(compocn, 'Sa_o2')
++    else
++       if ( fldchk(is_local%wrap%FBImp(compatm, compatm), 'Sa_o2', rc=rc) .and. &
++            fldchk(is_local%wrap%FBExp(compocn)         , 'Sa_o2', rc=rc)) then
++          call addmap_from(compatm, 'Sa_o2', compocn, mapbilnr, 'one', atm2ocn_map)
++          call addmrg_to(compocn, 'Sa_o2', &
++               mrg_from=compatm, mrg_fld='Sa_o2', mrg_type='copy')
++       end if
++    end if
++
+     !=====================================================================
+     ! FIELDS TO ICE (compice)
+     !=====================================================================
