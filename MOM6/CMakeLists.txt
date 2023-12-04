@@ -134,7 +134,6 @@ target_sources(OM3_mom6 PRIVATE
   MOM6/src/framework/MOM_array_transform.F90
   MOM6/src/framework/MOM_checksums.F90
   MOM6/src/framework/MOM_coms.F90
-  MOM6/src/framework/MOM_coupler_types.F90
   MOM6/src/framework/MOM_cpu_clock.F90
   MOM6/src/framework/MOM_data_override.F90
   MOM6/src/framework/MOM_diag_mediator.F90
@@ -347,7 +346,6 @@ target_sources(OM3_mom6 PRIVATE
 
   MOM6/config_src/infra/FMS1/MOM_coms_infra.F90
   MOM6/config_src/infra/FMS1/MOM_constants.F90
-  MOM6/config_src/infra/FMS1/MOM_couplertype_infra.F90
   MOM6/config_src/infra/FMS1/MOM_cpu_clock_infra.F90
   MOM6/config_src/infra/FMS1/MOM_data_override_infra.F90
   MOM6/config_src/infra/FMS1/MOM_diag_manager_infra.F90
@@ -362,10 +360,14 @@ target_sources(OM3_mom6 PRIVATE
   MOM6/config_src/drivers/nuopc_cap/mom_surface_forcing_nuopc.F90
   MOM6/config_src/drivers/nuopc_cap/ocn_comp_NUOPC.F90
   MOM6/config_src/drivers/nuopc_cap/time_utils.F90
+
+  extra_sources/mom_cap_gtracer_flux.F90
 )
 add_patched_source(OM3_mom6 MOM6/config_src/drivers/nuopc_cap/mom_cap.F90)
 add_patched_source(OM3_mom6 MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90)
 add_patched_source(OM3_mom6 MOM6/config_src/drivers/nuopc_cap/mom_ocean_model_nuopc.F90)
+add_patched_source(OM3_mom6 MOM6/config_src/infra/FMS1/MOM_couplertype_infra.F90)
+add_patched_source(OM3_mom6 MOM6/src/framework/MOM_coupler_types.F90)
 
 ### Install and Export
 
