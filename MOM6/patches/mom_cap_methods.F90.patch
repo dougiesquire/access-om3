@@ -1,18 +1,19 @@
 diff --git a/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90 b/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90.new
-index db8bc33..7fcec92 100644
+index db8bc33..a53e1d6 100644
 --- a/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90
 +++ b/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90.new
-@@ -21,6 +21,9 @@ use MOM_surface_forcing_nuopc, only: ice_ocean_boundary_type
+@@ -21,6 +21,10 @@ use MOM_surface_forcing_nuopc, only: ice_ocean_boundary_type
  use MOM_grid,                  only: ocean_grid_type
  use MOM_domains,               only: pass_var
  use mpp_domains_mod,           only: mpp_get_compute_domain
 +use MOM_coupler_types,         only: coupler_1d_bc_type, coupler_2d_bc_type
 +use MOM_coupler_types,         only: coupler_type_spawn, set_coupler_type_data
-+use MOM_coupler_types,         only: ind_pcair, ind_u10, ind_psurf
++use MOM_coupler_types,         only: ind_pcair, ind_u10, ind_psurf, ind_runoff, ind_deposition
++use MOM_cap_gtracer_flux,      only: get_coupled_field_name, UNKNOWN_CMEPS_FIELD
  
  ! By default make data private
  implicit none; private
-@@ -72,13 +75,16 @@ end subroutine mom_set_geomtype
+@@ -72,13 +76,16 @@ end subroutine mom_set_geomtype
  !> This function has a few purposes:
  !! (1) it imports surface fluxes using data from the mediator; and
  !! (2) it can apply restoring in SST and SSS.
@@ -30,17 +31,19 @@ index db8bc33..7fcec92 100644
  
    ! Local Variables
    integer                         :: i, j, ib, ig, jg, n
-@@ -89,7 +95,9 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
+@@ -89,7 +96,11 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
    real(ESMF_KIND_R8), allocatable :: tauy(:,:)
    real(ESMF_KIND_R8), allocatable :: stkx(:,:,:)
    real(ESMF_KIND_R8), allocatable :: stky(:,:,:)
 +  real(ESMF_KIND_R8), allocatable :: work(:,:)
    character(len=*)  , parameter   :: subname = '(mom_import)'
 +  type(coupler_2d_bc_type)        :: atm_fields
++  character(len=256)              :: stdname
++  integer                         :: field_index
  
    rc = ESMF_SUCCESS
  
-@@ -356,6 +364,58 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
+@@ -356,6 +367,47 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
        deallocate(stkx,stky)
    endif
  
@@ -53,43 +56,32 @@ index db8bc33..7fcec92 100644
 +                              (/jsc,jsc,jec,jec/), as_needed=.true.)
 +
 +    ! Set fields in atm_fields
-+    ! TODO: Need better logic here to determine which fields to import.
-+    ! For now just hadnling BLING gas flux fields
 +    do n = 1, atm_fields%num_bcs
-+      if (atm_fields%bc(n)%name .eq. 'co2_flux') then
-+        call ESMF_LogWrite(trim(subname)//': coupling pcair field for generic_tracer flux: '//&
-+              trim(atm_fields%bc(n)%name), ESMF_LOGMSG_INFO)
++      stdname = get_coupled_field_name(atm_fields%bc(n)%name)
++      if (stdname /= UNKNOWN_CMEPS_FIELD) then
++        if (atm_fields%bc(n)%flux_type .eq. 'air_sea_deposition') then
++          field_index = ind_deposition
++        elseif (atm_fields%bc(n)%flux_type .eq. 'land_sea_runoff') then
++          field_index = ind_runoff
++        else
++          field_index = ind_pcair
++          call set_coupler_type_data(sqrt(ice_ocean_boundary%u10_sqr), n, atm_fields, &
++              idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_u10)
++          call set_coupler_type_data(ice_ocean_boundary%p, n, atm_fields, &
++            idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_psurf)
++        endif
++
++        call ESMF_LogWrite(trim(subname)//': coupling '//trim(stdname)//' for calculation '//&
++              'of generic_tracer flux: '//trim(atm_fields%bc(n)%name), ESMF_LOGMSG_INFO)
 +        allocate (work(isc:iec,jsc:jec))
-+        call state_getimport(importState, 'Sa_co2prog', isc, iec, jsc, jec, work, rc=rc)
++        call state_getimport(importState, trim(stdname), isc, iec, jsc, jec, work, rc=rc)
 +        if (ChkErr(rc,__LINE__,u_FILE_u)) return
 +        call set_coupler_type_data(work, n, atm_fields, &
-+              idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_pcair)
-+        deallocate(work)
-+      elseif (atm_fields%bc(n)%name .eq. 'o2_flux') then
-+        call ESMF_LogWrite(trim(subname)//': coupling pcair field for generic_tracer flux: '//&
-+              trim(atm_fields%bc(n)%name), ESMF_LOGMSG_INFO)
-+        allocate (work(isc:iec,jsc:jec))
-+        call state_getimport(importState, 'Sa_o2', isc, iec, jsc, jec, work, rc=rc)
-+        if (ChkErr(rc,__LINE__,u_FILE_u)) return
-+        call set_coupler_type_data(work, n, atm_fields, &
-+              idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_pcair)
++              idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=field_index)
 +        deallocate(work)
 +      else
-+        call ESMF_LogWrite(trim(subname)//': uncoupled fields for generic_tracer flux: '//&
++        call ESMF_LogWrite(trim(subname)//': no fields coupled for generic_tracer flux: '//&
 +              trim(atm_fields%bc(n)%name), ESMF_LOGMSG_INFO)
-+      endif
-+      if ( &
-+          atm_fields%bc(n)%flux_type .eq. 'air_sea_gas_flux_generic' .or. &
-+          atm_fields%bc(n)%flux_type .eq. 'air_sea_gas_flux' &
-+         ) then
-+        call ESMF_LogWrite(trim(subname)//': coupling u10 for generic_tracer flux: '//&
-+              trim(atm_fields%bc(n)%name), ESMF_LOGMSG_INFO)
-+        call set_coupler_type_data(sqrt(ice_ocean_boundary%u10_sqr), n, atm_fields, &
-+              idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_u10)
-+        call ESMF_LogWrite(trim(subname)//': coupling psurf field for generic_tracer flux: '//&
-+              trim(atm_fields%bc(n)%name), ESMF_LOGMSG_INFO)
-+        call set_coupler_type_data(ice_ocean_boundary%p, n, atm_fields, &
-+              idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_psurf)
 +      endif
 +    enddo
 +

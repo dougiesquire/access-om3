@@ -20,6 +20,8 @@ implicit none; private
 public :: gas_exchange_init
 public :: gas_fields_restore
 public :: gas_fields_restart
+public :: get_coupled_field_name
+public :: UNKNOWN_CMEPS_FIELD
 
 !> FMS coupler_bc_types for additional tracer fields when using generic tracers
 logical :: gas_fluxes_initialized = .false.  ! This is set to true when the following types are initialized.
@@ -42,6 +44,8 @@ type(coupler_1d_bc_type), target :: ex_gas_fluxes      ! gas fluxes between the 
     !! impact the fluxes. The fields in this structure are never actually set, 
     !! but the structure is used for initialisation of components and to spawn 
     !! other structure whose fields are set.
+
+character(len=*), parameter      :: UNKNOWN_CMEPS_FIELD = "UNKNOWN_FIELD"
 
 contains
 
@@ -150,5 +154,21 @@ subroutine add_domain_dimension_data(fileobj)
     deallocate(buffer)
   
 end subroutine add_domain_dimension_data
+
+!> Return the CMEPS standard_name of the coupled field required for a given coupled
+!! generic_tracer flux name.
+function get_coupled_field_name(name)
+    character(len=64)                  :: get_coupled_field_name !< CMEPS standard_name
+    character(len=*), intent(in)       :: name                   !< gtracer flux name
+
+    select case(trim(name))
+        case( 'co2_flux' )
+            get_coupled_field_name = "Sa_co2prog"
+        case( 'o2_flux' )
+            get_coupled_field_name = "Sa_o2"
+        case default
+            get_coupled_field_name = UNKNOWN_CMEPS_FIELD
+    end select
+end function get_coupled_field_name
 
 end module MOM_cap_gtracer_flux

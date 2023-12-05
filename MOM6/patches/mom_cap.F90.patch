@@ -1,5 +1,5 @@
 diff --git a/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90 b/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90.new
-index 2841c71..7793782 100644
+index 2841c71..8e6e9f0 100644
 --- a/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90
 +++ b/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90.new
 @@ -2,8 +2,9 @@
@@ -21,19 +21,20 @@ index 2841c71..7793782 100644
  
  #ifdef CESMCOUPLED
  use shr_log_mod,             only: shr_log_setLogUnit
-@@ -36,6 +38,11 @@ use nuopc_shr_methods,       only: get_component_instance
+@@ -36,6 +38,12 @@ use nuopc_shr_methods,       only: get_component_instance
  #endif
  use time_utils_mod,           only: esmf2fms_time
  
 +#ifdef _USE_GENERIC_TRACER
 +use MOM_coupler_types,        only: coupler_type_initialized, coupler_type_spawn
 +use MOM_cap_gtracer_flux,     only: gas_exchange_init, gas_fields_restore, gas_fields_restart
++use MOM_cap_gtracer_flux,     only: get_coupled_field_name, UNKNOWN_CMEPS_FIELD
 +#endif
 +
  use, intrinsic :: iso_fortran_env, only: output_unit
  
  use ESMF,  only: ESMF_ClockAdvance, ESMF_ClockGet, ESMF_ClockPrint, ESMF_VMget
-@@ -151,6 +158,12 @@ type(ESMF_GeomType_Flag) :: geomtype
+@@ -151,6 +159,12 @@ type(ESMF_GeomType_Flag) :: geomtype
  character(len=8)  :: restart_mode = 'alarms'
  character(len=16) :: inst_suffix = ''
  
@@ -46,7 +47,7 @@ index 2841c71..7793782 100644
  contains
  
  !> NUOPC SetService method is the only public entry point.
-@@ -392,6 +405,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -392,6 +406,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
    type (ocean_public_type),      pointer :: ocean_public => NULL()
    type (ocean_state_type),       pointer :: ocean_state => NULL()
    type(ice_ocean_boundary_type), pointer :: Ice_ocean_boundary => NULL()
@@ -55,7 +56,7 @@ index 2841c71..7793782 100644
    type(ocean_internalstate_wrapper)      :: ocean_internalstate
    type(ocean_grid_type),         pointer :: ocean_grid => NULL()
    type(directories)                      :: dirs
-@@ -423,6 +438,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -423,6 +439,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
    character(len=512)                     :: restartfile          ! Path/Name of restart file
    character(len=2048)                    :: restartfiles         ! Path/Name of restart files
                                                                   ! (same as restartfile if single restart file)
@@ -63,7 +64,7 @@ index 2841c71..7793782 100644
    character(len=*), parameter            :: subname='(MOM_cap:InitializeAdvertise)'
    character(len=32)                      :: calendar
    character(len=:), allocatable          :: rpointer_filename
-@@ -498,6 +514,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -498,6 +515,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
    if (chkerr(rc,__LINE__,u_FILE_u)) return
    call MOM_infra_init(mpi_comm_mom)
  
@@ -72,7 +73,7 @@ index 2841c71..7793782 100644
    ! determine the calendar
    if (cesm_coupled) then
      call NUOPC_CompAttributeGet(gcomp, name="calendar", value=cvalue, &
-@@ -630,11 +648,39 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -630,11 +649,39 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
    endif
  
    ocean_public%is_ocean_pe = .true.
@@ -116,7 +117,7 @@ index 2841c71..7793782 100644
    endif
  
    ! GMM, this call is not needed in CESM. Check with EMC if it can be deleted.
-@@ -702,6 +748,18 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -702,6 +749,18 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
      Ice_ocean_boundary%hcond           = 0.0
    endif
  
@@ -135,22 +136,24 @@ index 2841c71..7793782 100644
    call query_ocean_state(ocean_state, use_waves=use_waves, wave_method=wave_method)
    if (use_waves) then
      if (wave_method == "EFACTOR") then
-@@ -773,6 +831,14 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -773,6 +832,16 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
      endif
    endif
  
 +  if (use_generic_tracer) then
 +    ! Add import fields required for extra tracer fluxes
-+    ! TODO: Need logic here to determine which fields to import based on
-+    ! Ice_ocean_boundary%fluxes. For now just hardcoding for BLING gas flux fields
-+    call fld_list_add(fldsToOcn_num, fldsToOcn, "Sa_co2prog", "will provide")
-+    call fld_list_add(fldsToOcn_num, fldsToOcn, "Sa_o2"     , "will provide")
++    do n = 1, gas_fluxes%num_bcs
++      stdname = get_coupled_field_name(gas_fluxes%bc(n)%name)
++      if (stdname /= UNKNOWN_CMEPS_FIELD) then
++        call fld_list_add(fldsToOcn_num, fldsToOcn, stdname, "will provide")
++      endif
++    enddo
 +  endif
 +
    !--------- export fields -------------
    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "ocean_mask"                 , "will provide")
    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "sea_surface_temperature"    , "will provide")
-@@ -1487,6 +1553,7 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1487,6 +1556,7 @@ subroutine ModelAdvance(gcomp, rc)
    type (ocean_public_type),      pointer :: ocean_public       => NULL()
    type (ocean_state_type),       pointer :: ocean_state        => NULL()
    type(ice_ocean_boundary_type), pointer :: Ice_ocean_boundary => NULL()
@@ -158,7 +161,7 @@ index 2841c71..7793782 100644
    type(ocean_internalstate_wrapper)      :: ocean_internalstate
    type(ocean_grid_type)        , pointer :: ocean_grid
    type(time_type)                        :: Time
-@@ -1509,6 +1576,7 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1509,6 +1579,7 @@ subroutine ModelAdvance(gcomp, rc)
    character(len=*),parameter             :: subname='(MOM_cap:ModelAdvance)'
    character(len=8)                       :: suffix
    character(len=:), allocatable          :: rpointer_filename
@@ -166,7 +169,7 @@ index 2841c71..7793782 100644
    integer                                :: num_rest_files
  
    rc = ESMF_SUCCESS
-@@ -1617,8 +1685,17 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1617,8 +1688,17 @@ subroutine ModelAdvance(gcomp, rc)
      ! Import data
      !---------------
  
@@ -186,7 +189,7 @@ index 2841c71..7793782 100644
  
      !---------------
      ! Update MOM6
-@@ -1667,7 +1744,7 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1667,7 +1747,7 @@ subroutine ModelAdvance(gcomp, rc)
        ! determine restart filename
        call ESMF_ClockGetNextTime(clock, MyTime, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -195,7 +198,7 @@ index 2841c71..7793782 100644
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
  
        if (cesm_coupled) then
-@@ -1725,6 +1802,14 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1725,6 +1805,14 @@ subroutine ModelAdvance(gcomp, rc)
  
        endif
  
@@ -210,7 +213,7 @@ index 2841c71..7793782 100644
        if (is_root_pe()) then
          write(stdout,*) subname//' writing restart file ',trim(restartname)
        endif
-@@ -1953,6 +2038,7 @@ subroutine ocean_model_finalize(gcomp, rc)
+@@ -1953,6 +2041,7 @@ subroutine ocean_model_finalize(gcomp, rc)
    integer                                :: alarmCount
    character(len=64)                      :: timestamp
    logical                                :: write_restart
@@ -218,7 +221,7 @@ index 2841c71..7793782 100644
    character(len=*),parameter  :: subname='(MOM_cap:ocean_model_finalize)'
  
    if (is_root_pe()) then
-@@ -1984,6 +2070,16 @@ subroutine ocean_model_finalize(gcomp, rc)
+@@ -1984,6 +2073,16 @@ subroutine ocean_model_finalize(gcomp, rc)
  
    call ocean_model_end(ocean_public, ocean_State, Time, write_restart=write_restart)
  

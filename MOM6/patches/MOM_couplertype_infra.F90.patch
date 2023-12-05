@@ -1,22 +1,22 @@
 diff --git a/MOM6/config_src/infra/FMS1/MOM_couplertype_infra.F90 b/MOM6/config_src/infra/FMS1/MOM_couplertype_infra.F90.new
-index 637f2b5..8eff300 100644
+index 637f2b5..1d63247 100644
 --- a/MOM6/config_src/infra/FMS1/MOM_couplertype_infra.F90
 +++ b/MOM6/config_src/infra/FMS1/MOM_couplertype_infra.F90.new
-@@ -9,7 +9,7 @@ use coupler_types_mod, only : coupler_type_write_chksums, coupler_type_redistrib
- use coupler_types_mod, only : coupler_type_increment_data, coupler_type_rescale_data
+@@ -10,6 +10,8 @@ use coupler_types_mod, only : coupler_type_increment_data, coupler_type_rescale_
  use coupler_types_mod, only : coupler_type_extract_data, coupler_type_set_data
  use coupler_types_mod, only : coupler_type_data_override
--use coupler_types_mod, only : ind_flux, ind_alpha, ind_csurf
-+use coupler_types_mod, only : ind_flux, ind_alpha, ind_csurf, ind_pcair, ind_u10, ind_psurf
+ use coupler_types_mod, only : ind_flux, ind_alpha, ind_csurf
++use coupler_types_mod, only : ind_pcair, ind_u10, ind_psurf
++use coupler_types_mod, only : ind_runoff, ind_deposition
  use coupler_types_mod, only : coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
  use atmos_ocean_fluxes_mod, only : aof_set_coupler_flux
  use MOM_domain_infra,  only : domain2D
-@@ -22,7 +22,7 @@ public :: CT_set_diags, CT_send_data, CT_data_override, CT_write_chksums
- public :: CT_set_data,  CT_increment_data, CT_rescale_data
+@@ -23,6 +25,8 @@ public :: CT_set_data,  CT_increment_data, CT_rescale_data
  public :: CT_copy_data, CT_extract_data, CT_redistribute_data
  public :: atmos_ocn_coupler_flux
--public :: ind_flux, ind_alpha, ind_csurf
-+public :: ind_flux, ind_alpha, ind_csurf, ind_pcair, ind_u10, ind_psurf
+ public :: ind_flux, ind_alpha, ind_csurf
++public :: ind_pcair, ind_u10, ind_psurf
++public :: ind_runoff, ind_deposition
  public :: coupler_1d_bc_type, coupler_2d_bc_type, coupler_3d_bc_type
  
  !> This is the interface to spawn one coupler_bc_type into another.
