@@ -1,6 +1,5 @@
-!> Contains routines for the initialisation and calculation of FMS 
-!! coupler_bc_type tracer flux structures when using MOM generic 
-!! tracers
+!> Contains routines for handling FMS coupler_bc_type tracer flux structures
+!! when using MOM generic tracers
 
 module MOM_cap_gtracer_flux
 
@@ -13,6 +12,9 @@ use fms2_io_mod,               only: FmsNetcdfDomainFile_t
 use fms2_io_mod,               only: fms2_check_if_open => check_if_open, fms2_close_file => close_file
 use fms2_io_mod,               only: fms2_write_data => write_data, fms2_read_restart => read_restart, fms2_write_restart => write_restart
 use fms2_io_mod,               only: fms2_get_global_io_domain_indices => get_global_io_domain_indices
+use field_manager_mod,         only: fm_field_name_len, fm_type_name_len, fm_loop_over_list, fm_change_list
+use fm_util_mod,               only: fm_util_get_real_array
+use mpp_mod,                   only: mpp_error, FATAL
 
 implicit none; private
 
@@ -20,24 +22,28 @@ implicit none; private
 public :: gas_exchange_init
 public :: gas_fields_restore
 public :: gas_fields_restart
+public :: add_gas_fluxes_param
 public :: get_coupled_field_name
 public :: UNKNOWN_CMEPS_FIELD
 
+character(len=*), parameter      :: mod_name = 'mom_cap_gtracer_flux'
+character(len=*), parameter      :: UNKNOWN_CMEPS_FIELD = "UNKNOWN_FIELD"
+
 !> FMS coupler_bc_types for additional tracer fields when using generic tracers
 logical :: gas_fluxes_initialized = .false.  ! This is set to true when the following types are initialized.
-type(coupler_1d_bc_type), target :: ex_gas_fields_atm  ! gas fields in atm
+type(coupler_1d_bc_type), target :: ex_gas_fields_atm ! tracer fields in atm
     !< Structure containing atmospheric surface variables that are used in the
     !! calculation of the atmosphere-ocean gas fluxes, as well as parameters
     !! regulating these fluxes. The fields in this structure are never actually
     !! set, but the structure is used for initialisation of components and to 
     !! spawn other structure whose fields are set.
-type(coupler_1d_bc_type), target :: ex_gas_fields_ocn  ! gas fields atop the ocean
+type(coupler_1d_bc_type), target :: ex_gas_fields_ocn ! tracer fields atop the ocean
     !< Structure containing ocean surface variables that are used in the
     !! calculation of the atmosphere-ocean gas fluxes, as well as parameters
     !! regulating these fluxes. The fields in this structure are never actually
     !! set, but the structure is used for initialisation of components and to 
     !! spawn other structure whose fields are set.
-type(coupler_1d_bc_type), target :: ex_gas_fluxes      ! gas fluxes between the atm and ocean
+type(coupler_1d_bc_type), target :: ex_gas_fluxes ! tracer fluxes between the atm and ocean
     !< A structure for exchanging gas or tracer fluxes between the atmosphere and
     !! ocean, defined by the field table, as well as a place holder of 
     !! intermediate calculations, such as piston velocities, and parameters that 
@@ -45,23 +51,21 @@ type(coupler_1d_bc_type), target :: ex_gas_fluxes      ! gas fluxes between the 
     !! but the structure is used for initialisation of components and to spawn 
     !! other structure whose fields are set.
 
-character(len=*), parameter      :: UNKNOWN_CMEPS_FIELD = "UNKNOWN_FIELD"
-
 contains
 
 !> \brief Gas and tracer field initialization routine for running with MOM generic tracers.
 !! Copied and adapted slightly from
 !! https://github.com/NOAA-GFDL/FMScoupler/blob/77618869f48507c8629f28457cb701e25e1ea4fc/full/flux_exchange.F90#L626.
 subroutine gas_exchange_init (gas_fields_atm, gas_fields_ocn, gas_fluxes)
-    type(coupler_1d_bc_type), optional, pointer :: gas_fields_atm
+    type(coupler_1d_bc_type), optional, pointer :: gas_fields_atm ! tracer fields in atm
         !< Pointer to a structure containing atmospheric surface variables that
         !! are used in the calculation of the atmosphere-ocean gas fluxes, as well
         !! as parameters regulating these fluxes.
-    type(coupler_1d_bc_type), optional, pointer :: gas_fields_ocn
+    type(coupler_1d_bc_type), optional, pointer :: gas_fields_ocn ! tracer fields atop the ocean
         !< Pointer to a structure containing ocean surface variables that are 
         !! used in the calculation of the atmosphere-ocean gas fluxes, as well as
         !! parameters regulating these fluxes.
-    type(coupler_1d_bc_type), optional, pointer :: gas_fluxes
+    type(coupler_1d_bc_type), optional, pointer :: gas_fluxes ! tracer fluxes between the atm and ocean
         !< Pointer to a structure for exchanging gas or tracer fluxes between the
         !! atmosphere and ocean, defined by the field table, as well as a place holder
         !! of intermediate calculations, such as piston velocities, and parameters
@@ -83,7 +87,7 @@ end subroutine gas_exchange_init
 !> \brief Restore FMS coupler_bc_type state from ocean restart file
 ! See https://github.com/NOAA-GFDL/FMScoupler/blob/main/full/coupler_main.F90#L1896
 subroutine gas_fields_restore(gas_fields, domain, directory)
-    type(coupler_2d_bc_type), intent(inout) :: gas_fields !< BC_type structure to be registered for restarts
+    type(coupler_2d_bc_type), intent(inout) :: gas_fields !< FMS coupler_bc_type to be registered for restarts
     type(domain2D), intent(in)              :: domain     !< The FMS domain to use for this registration call
     character(len=*), optional, intent(in)  :: directory  !< Directory containing the restart file
 
@@ -115,7 +119,7 @@ end subroutine gas_fields_restore
 !> \brief Write ocean restart file for FMS coupler_bc_type state
 ! See https://github.com/NOAA-GFDL/FMScoupler/blob/main/full/coupler_main.F90#L2086
 subroutine gas_fields_restart(gas_fields, domain, directory)
-    type(coupler_2d_bc_type), intent(inout) :: gas_fields !< BC_type structure to be registered for restarts
+    type(coupler_2d_bc_type), intent(inout) :: gas_fields !< FMS coupler_bc_type to be registered for restarts
     type(domain2D), intent(in)              :: domain     !< The FMS domain to use for this registration call
     character(len=*), optional, intent(in)  :: directory  !< Directory containing the restart file
     
@@ -142,6 +146,8 @@ end subroutine gas_fields_restart
 !! Copied from https://github.com/NOAA-GFDL/FMScoupler/blob/77618869f48507c8629f28457cb701e25e1ea4fc/full/coupler_main.F90#L2026
 subroutine add_domain_dimension_data(fileobj)
     type(FmsNetcdfDomainFile_t)        :: fileobj !< Fms2io domain decomposed fileobj
+
+    ! local variables
     integer, dimension(:), allocatable :: buffer !< Buffer with axis data
     integer                            :: is, ie !< Starting and Ending indices for data
   
@@ -154,6 +160,43 @@ subroutine add_domain_dimension_data(fileobj)
     deallocate(buffer)
   
 end subroutine add_domain_dimension_data
+
+!> Retrieve param array from field_manager and add to FMS coupler_bc_type. This is
+!! needed because the coupler_type_spawn routine does not copy the param array into
+!! the spawned type. Hopefully we can get rid of this. This routine is based on
+!! https://github.com/NOAA-GFDL/FMS/blob/7f585284f1487c0629f8075be350385e6e75dd2f/coupler/atmos_ocean_fluxes.F90#L448
+subroutine add_gas_fluxes_param(gas_fluxes)
+    type(coupler_2d_bc_type), intent(inout) :: gas_fluxes !< FMS coupler_bc_type to add param to
+
+    ! local variables
+    integer                                 :: n
+    character(len=fm_field_name_len)        :: name
+    character(len=fm_type_name_len)         :: typ
+    integer                                 :: ind
+
+    character(len=*), parameter             :: sub_name = 'add_gas_fluxes_param'
+    character(len=*), parameter             :: error_header =&
+        '==>Error from ' // trim(mod_name) // '(' // trim(sub_name) // '):'
+
+    n = 0
+    do while (fm_loop_over_list('/coupler_mod/fluxes', name, typ, ind))
+        if (typ .ne. 'list') then
+            call mpp_error(FATAL, trim(error_header) // ' ' // trim(name) // ' is not a list')
+        endif
+
+        n = n + 1
+
+        if (.not. fm_change_list('/coupler_mod/fluxes/' // trim(name))) then
+            call mpp_error(FATAL, trim(error_header) // ' Problem changing to ' // trim(name))
+        endif
+
+        if (gas_fluxes%bc(n)%name .eq. name) then
+            gas_fluxes%bc(n)%param => fm_util_get_real_array('param')
+        else
+            call mpp_error(FATAL, trim(error_header) // ' Problem setting param array pointer')
+        endif
+    enddo
+end subroutine add_gas_fluxes_param
 
 !> Return the CMEPS standard_name of the coupled field required for a given coupled
 !! generic_tracer flux name.

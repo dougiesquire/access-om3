@@ -1,8 +1,8 @@
 diff --git a/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90 b/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90.new
-index db8bc33..a53e1d6 100644
+index db8bc33..74b5cd1 100644
 --- a/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90
 +++ b/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90.new
-@@ -21,6 +21,10 @@ use MOM_surface_forcing_nuopc, only: ice_ocean_boundary_type
+@@ -21,6 +21,11 @@ use MOM_surface_forcing_nuopc, only: ice_ocean_boundary_type
  use MOM_grid,                  only: ocean_grid_type
  use MOM_domains,               only: pass_var
  use mpp_domains_mod,           only: mpp_get_compute_domain
@@ -10,10 +10,11 @@ index db8bc33..a53e1d6 100644
 +use MOM_coupler_types,         only: coupler_type_spawn, set_coupler_type_data
 +use MOM_coupler_types,         only: ind_pcair, ind_u10, ind_psurf, ind_runoff, ind_deposition
 +use MOM_cap_gtracer_flux,      only: get_coupled_field_name, UNKNOWN_CMEPS_FIELD
++use atmos_ocean_fluxes_calc_mod, only: atmos_ocean_fluxes_calc
  
  ! By default make data private
  implicit none; private
-@@ -72,13 +76,16 @@ end subroutine mom_set_geomtype
+@@ -72,13 +77,16 @@ end subroutine mom_set_geomtype
  !> This function has a few purposes:
  !! (1) it imports surface fluxes using data from the mediator; and
  !! (2) it can apply restoring in SST and SSS.
@@ -31,7 +32,7 @@ index db8bc33..a53e1d6 100644
  
    ! Local Variables
    integer                         :: i, j, ib, ig, jg, n
-@@ -89,7 +96,11 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
+@@ -89,7 +97,11 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
    real(ESMF_KIND_R8), allocatable :: tauy(:,:)
    real(ESMF_KIND_R8), allocatable :: stkx(:,:,:)
    real(ESMF_KIND_R8), allocatable :: stky(:,:,:)
@@ -43,7 +44,7 @@ index db8bc33..a53e1d6 100644
  
    rc = ESMF_SUCCESS
  
-@@ -356,6 +367,47 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
+@@ -356,6 +368,50 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
        deallocate(stkx,stky)
    endif
  
@@ -85,7 +86,10 @@ index db8bc33..a53e1d6 100644
 +      endif
 +    enddo
 +
-+    ! TODO: Calculate fluxes from ocean_public%fields and atm_fields into ice_ocean_boundary%fluxes
++    ! Calculate the extra tracer fluxes
++    call ESMF_LogWrite(trim(subname)//': calculating extra tracer fluxes', ESMF_LOGMSG_INFO)
++    call atmos_ocean_fluxes_calc(atm_fields, ocean_public%fields, ice_ocean_boundary%fluxes, &
++          ice_ocean_boundary%ice_fraction, isc, iec, jsc, jec)
 +  endif
 +
  end subroutine mom_import

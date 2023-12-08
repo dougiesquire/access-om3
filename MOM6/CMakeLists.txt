@@ -362,6 +362,7 @@ target_sources(OM3_mom6 PRIVATE
   MOM6/config_src/drivers/nuopc_cap/time_utils.F90
 
   extra_sources/mom_cap_gtracer_flux.F90
+  extra_sources/atmos_ocean_fluxes_calc.F90
 )
 add_patched_source(OM3_mom6 MOM6/config_src/drivers/nuopc_cap/mom_cap.F90)
 add_patched_source(OM3_mom6 MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90)
