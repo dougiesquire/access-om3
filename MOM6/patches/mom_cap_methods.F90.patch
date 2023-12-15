@@ -1,24 +1,28 @@
 diff --git a/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90 b/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90.new
-index db8bc33..9dc4ff0 100644
+index db8bc33..65c4b69 100644
 --- a/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90
 +++ b/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90.new
-@@ -21,6 +21,10 @@ use MOM_surface_forcing_nuopc, only: ice_ocean_boundary_type
+@@ -21,6 +21,12 @@ use MOM_surface_forcing_nuopc, only: ice_ocean_boundary_type
  use MOM_grid,                  only: ocean_grid_type
  use MOM_domains,               only: pass_var
  use mpp_domains_mod,           only: mpp_get_compute_domain
++use MOM_time_manager,          only: time_type
++use MOM_data_override,         only: data_override
 +use MOM_coupler_types,         only: coupler_1d_bc_type, coupler_2d_bc_type
-+use MOM_coupler_types,         only: coupler_type_spawn, set_coupler_type_data
++use MOM_coupler_types,         only: coupler_type_spawn, set_coupler_type_data, coupler_type_data_override
 +use MOM_coupler_types,         only: ind_pcair, ind_u10, ind_psurf, ind_runoff, ind_deposition
 +use MOM_cap_gtracer_flux,      only: get_coupled_field_name, atmos_ocean_fluxes_calc, UNKNOWN_CMEPS_FIELD
  
  ! By default make data private
  implicit none; private
-@@ -72,13 +76,16 @@ end subroutine mom_set_geomtype
+@@ -72,16 +78,24 @@ end subroutine mom_set_geomtype
  !> This function has a few purposes:
  !! (1) it imports surface fluxes using data from the mediator; and
  !! (2) it can apply restoring in SST and SSS.
 -subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary, cesm_coupled, rc)
-+subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary, cesm_coupled, rc, gas_fields_atm)
++!! (3) optional: it calculates/overrides additional tracer flux and associated fields
++!! required by coupled generic tracers
++subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary, cesm_coupled, rc, gas_fields_atm, Time)
    type(ocean_public_type)       , intent(in)    :: ocean_public       !< Ocean surface state
    type(ocean_grid_type)         , intent(in)    :: ocean_grid         !< Ocean model grid
    type(ESMF_State)              , intent(inout) :: importState        !< incoming data from mediator
@@ -27,11 +31,18 @@ index db8bc33..9dc4ff0 100644
    integer                       , intent(inout) :: rc                 !< Return code
 +  type(coupler_1d_bc_type), optional, intent(in) :: gas_fields_atm    !< If present, this type describes the atmospheric
 +                                                                      !! tracer fields used to calculate generic tracer
-+                                                                      !! fluxes
++                                                                      !! fluxes. If present, input Time must also be
++                                                                      !! provided
++  type(time_type), optional, intent(in)         :: Time               !< The time of the import
++
  
    ! Local Variables
-   integer                         :: i, j, ib, ig, jg, n
-@@ -89,7 +96,11 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
+-  integer                         :: i, j, ib, ig, jg, n
++  integer                         :: i, j, ib, ig, jg, n, m
+   integer                         :: isc, iec, jsc, jec
+   integer                         :: nsc ! number of stokes drift components
+   character(len=128)              :: fldname
+@@ -89,7 +103,11 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
    real(ESMF_KIND_R8), allocatable :: tauy(:,:)
    real(ESMF_KIND_R8), allocatable :: stkx(:,:,:)
    real(ESMF_KIND_R8), allocatable :: stky(:,:,:)
@@ -43,7 +54,7 @@ index db8bc33..9dc4ff0 100644
  
    rc = ESMF_SUCCESS
  
-@@ -356,6 +367,50 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
+@@ -356,6 +374,87 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
        deallocate(stkx,stky)
    endif
  
@@ -51,11 +62,14 @@ index db8bc33..9dc4ff0 100644
 +  ! Tracer flux fields for generic tracers
 +  !---
 +  if (present(gas_fields_atm)) then
-+    ! Spawn 2D version of gas_fields_atm to unpack coupled field into
++    ! Spawn 2D version of gas_fields_atm to unpack coupled fields into
 +    call coupler_type_spawn(gas_fields_atm, atm_fields, (/isc,isc,iec,iec/), &
-+                              (/jsc,jsc,jec,jec/), as_needed=.true.)
++          (/jsc,jsc,jec,jec/), suffix = '_atm', as_needed=.true.)
 +
-+    ! Set fields in atm_fields
++    ! TODO: register diagnostics? Something like
++    ! call coupler_type_set_diags(atm_fields, "ocean_flux", ocean_public%axes(1:2), Time)
++
++    ! Set fields in atm_fields from coupler
 +    do n = 1, atm_fields%num_bcs
 +      stdname = get_coupled_field_name(atm_fields%bc(n)%name)
 +      if (stdname /= UNKNOWN_CMEPS_FIELD) then
@@ -66,13 +80,13 @@ index db8bc33..9dc4ff0 100644
 +        else
 +          field_index = ind_pcair
 +          call set_coupler_type_data(sqrt(ice_ocean_boundary%u10_sqr), n, atm_fields, &
-+              idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_u10)
++                idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_u10)
 +          call set_coupler_type_data(ice_ocean_boundary%p, n, atm_fields, &
-+            idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_psurf)
++                idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_psurf)
 +        endif
 +
-+        call ESMF_LogWrite(trim(subname)//': coupling '//trim(stdname)//' for calculation '//&
-+              'of generic_tracer flux: '//trim(atm_fields%bc(n)%name), ESMF_LOGMSG_INFO)
++        call ESMF_LogWrite(trim(subname)//': generic_tracer flux: '//trim(atm_fields%bc(n)%name)//&
++              ', coupling field '//trim(stdname), ESMF_LOGMSG_INFO)
 +        allocate (work(isc:iec,jsc:jec))
 +        call state_getimport(importState, trim(stdname), isc, iec, jsc, jec, work, rc=rc)
 +        if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -80,15 +94,49 @@ index db8bc33..9dc4ff0 100644
 +              idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=field_index)
 +        deallocate(work)
 +      else
-+        call ESMF_LogWrite(trim(subname)//': no fields coupled for generic_tracer flux: '//&
-+              trim(atm_fields%bc(n)%name), ESMF_LOGMSG_INFO)
++        call ESMF_LogWrite(trim(subname)//': generic_tracer flux: '//trim(atm_fields%bc(n)%name)//&
++              ', no fields coupled', ESMF_LOGMSG_INFO)
 +      endif
++    enddo
++
++    ! Potentially override atm_fields from data_table.
++    ! call coupler_type_data_override('OCN', atm_fields, Time) ! doing this doesn't tell us what was overridden
++    do n = 1, atm_fields%num_bcs
++      do m = 1, atm_fields%bc(n)%num_fields
++        call data_override('OCN', atm_fields%bc(n)%field(m)%name, atm_fields%bc(n)%field(m)%values, &
++              Time, override=atm_fields%bc(n)%field(m)%override)
++        if (atm_fields%bc(n)%field(m)%override) then
++          call ESMF_LogWrite(trim(subname)//': generic_tracer flux: '//trim(atm_fields%bc(n)%name)//&
++                ', overriding field: '//trim(atm_fields%bc(n)%field(m)%name), ESMF_LOGMSG_INFO)
++        endif
++      enddo
++    enddo
++
++    ! TODO: send atm_fields diagnostics? Something like
++    ! call coupler_type_send_data(atm_fields, Time)
++
++    ! Potentially override ice_ocean_boundary%fluxes from data_table.
++    ! Doing this before atmos_ocean_fluxes_calc call avoids unnecessary calculation of overridden fluxes
++    ! call coupler_type_data_override('OCN', ice_ocean_boundary%fluxes, Time) ! doing this doesn't tell us what was overridden
++    do n = 1, ice_ocean_boundary%fluxes%num_bcs
++      do m = 1, ice_ocean_boundary%fluxes%bc(n)%num_fields
++        call data_override('OCN', ice_ocean_boundary%fluxes%bc(n)%field(m)%name, &
++              ice_ocean_boundary%fluxes%bc(n)%field(m)%values, Time, &
++              override=ice_ocean_boundary%fluxes%bc(n)%field(m)%override)
++        if (ice_ocean_boundary%fluxes%bc(n)%field(m)%override) then
++          call ESMF_LogWrite(trim(subname)//': generic_tracer flux: '//trim(ice_ocean_boundary%fluxes%bc(n)%name)//&
++                ', overriding field: '//trim(ice_ocean_boundary%fluxes%bc(n)%field(m)%name), ESMF_LOGMSG_INFO)
++        endif
++      enddo
 +    enddo
 +
 +    ! Calculate the extra tracer fluxes
 +    call ESMF_LogWrite(trim(subname)//': calculating extra tracer fluxes', ESMF_LOGMSG_INFO)
 +    call atmos_ocean_fluxes_calc(atm_fields, ocean_public%fields, ice_ocean_boundary%fluxes, &
 +          ice_ocean_boundary%ice_fraction, isc, iec, jsc, jec)
++
++    ! TODO: send ice_ocean_boundary%fluxes diagnostics? Something like
++    ! call coupler_type_send_data(ice_ocean_boundary%fluxes, Time)
 +  endif
 +
  end subroutine mom_import
