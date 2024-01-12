@@ -134,7 +134,7 @@ A (greatly) simplified summary of the handling of additional tracer fluxes in FM
 
 The schematic below traces the handling of additional tracer fluxes in more detail and shows where simplifications were made in the above summary. Note that I generated this schematic by reading the source code and it hasn’t (yet) been verified by any FMScoupler developer. To the best of my knowledge it is mostly complete/correct but I make no guarantees.
 
-<img src="https://github.com/dougiesquire/access-om3/assets/42455466/eb89fe76-d26f-49cd-b210-affdd9f74a9a" width=100%>
+<img src="https://github.com/dougiesquire/access-om3/assets/42455466/001ba241-1ae8-4bb0-99b1-b63b5569f85b" width=100%>
 
 # NUOPC-coupled MOM6 and generic_tracers
 
@@ -148,14 +148,14 @@ The code changes are limited to the [MOM6 NUOPC cap](https://github.com/NCAR/MOM
 1. Initialisation phases
     1. Initialise `coupler_1d_bc_type` data structures `ex_gas_fields_atm`, `ex_gas_fields_ocn` and `ex_gas_fluxes`. Note these structures are never actually populated with data (unlike in FMScoupler) - they are just used to spawn 2D structures (`coupler_2d_bc_type`).
     2. Initialise ocean model with (a pointer to) `ex_gas_fields_ocn` to populate relevant fields.
-    3. Spawn 2D `Ice_ocean_boundary%fluxes` from `gas_fluxes` and register atmospheric import fields required for additional tracer fluxes with NUOPC. Field export has not yet been implemented.
+    3. Spawn 2D `Ice_ocean_boundary%fluxes` from (a pointer to) `ex_gas_fluxes`.
+    4. Spawn 2D `atm_fields` from (a pointer to) `ex_gas_fields_atm`.
+    5. Using (a pointer to) `ex_gas_fluxes`, register with NUOPC the additional atmospheric import fields required flux calculations. Field export has not yet been implemented.
 2. Advance phase
-    1. Spawn temporary 2D version of `ex_gas_fields_atm` (`atm_fields`) and get/set atmospheric fields from the coupler.
+    1. Get/set atmospheric fields in `atm_fields` from the coupler.
     2. Calculate the fluxes in `Ice_ocean_boundary%fluxes` using a modified version of the routine used by FMScoupler that operates on FMS `coupler_2d_bc_type` inputs.
 
 The additional fluxes will be applied from `Ice_ocean_boundary%fluxes` when the model is advanced.
-
-FMS data override functionality has been added to allow the tracer fluxes and the contributing atmospheric fields to be overridden via a `data_table` using the component name `"OCN"`.
 
 ## Code structure
 
@@ -187,4 +187,14 @@ This is where most of the new code is, with many of the changes to `mom_cap.F90`
 
 The schematic below traces the handling of coupled generic_tracer fluxes in the MOM6 NUOPC cap.
 
-<img src="https://github.com/dougiesquire/access-om3/assets/42455466/63e55faa-14ea-44e8-9b6b-2626eec47dc5" width=65%>
+<img src="https://github.com/dougiesquire/access-om3/assets/42455466/b39aff05-4193-42e9-83f7-cce9cb7a974f" width=65%>
+
+## Diagnostics
+
+Diagnostics can be output for the FMS `coupler_2d_bc_type` fields involved in the handling of the tracer fluxes (flux fields: `Ice_ocean_boundary%fluxes`, ocean fields: `ocean_public%fields`, atmos fields: `atm_fields`). The “model_name” for each type is: flux fields: `“ocean_flux”`, ocean fields: `“ocean_sfc”`, atmos fields: `“atmos_sfc”`. The naming convention for diagnostics of FMS `coupler_bc_type`s is: `<flux_name>_<field_name>_<suffix>`, where `<suffix>` is `”_ice_ocn”`, `”_ocn”` and `”_atm”` for the flux, ocean and atmos fields, respectively. For example, the surface flux field for the `”co2_flux”` example above is called `”co2_flux_flux_ice_ocn”`.
+
+The flux and atmos diagnostics are sent immediately after the tracer flux calculation is done, prior to advancing the model. The ocean diagnostics are sent after advancing the model. This means that the flux/atmos diagnostics are not available at Tfinal+dt (whereas the ocean diagnostics are) and the ocean diagnostics are not available at Tstart (whereas the flux/atmos diagnostics are).
+
+## Data override
+
+FMS data override functionality has been added to allow the tracer fluxes and the contributing atmospheric fields to be overridden via a `data_table` using the component name `"OCN"`. The naming convention for overriding fields is as described above. E.g. one could override the atmospheric concentration field for the `”co2_flux”` example above using the fieldname `”co2_flux_pcair_atm”`

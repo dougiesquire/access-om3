@@ -1,5 +1,5 @@
 diff --git a/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90 b/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90.new
-index 2841c71..bda32b6 100644
+index 2841c71..29cccaf 100644
 --- a/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90
 +++ b/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90.new
 @@ -2,8 +2,9 @@
@@ -21,15 +21,14 @@ index 2841c71..bda32b6 100644
  
  #ifdef CESMCOUPLED
  use shr_log_mod,             only: shr_log_setLogUnit
-@@ -36,6 +38,16 @@ use nuopc_shr_methods,       only: get_component_instance
+@@ -36,6 +38,15 @@ use nuopc_shr_methods,       only: get_component_instance
  #endif
  use time_utils_mod,           only: esmf2fms_time
  
 +#ifdef _USE_GENERIC_TRACER
-+use MOM_coupler_types,        only: coupler_type_initialized, coupler_type_spawn
-+use MOM_coupler_types,        only: coupler_type_data_override, coupler_type_destructor
-+use MOM_coupler_types,        only: coupler_type_set_diags, coupler_type_send_data
-+use MOM_data_override,        only: data_override_init
++use MOM_coupler_types,        only: coupler_type_spawn, coupler_type_destructor
++use MOM_coupler_types,        only: coupler_type_set_diags, coupler_type_send_data, coupler_type_data_override
++use MOM_data_override,        only: data_override_init, data_override
 +use MOM_cap_gtracer_flux,     only: gas_exchange_init, gas_fields_restore, gas_fields_restart
 +use MOM_cap_gtracer_flux,     only: get_coupled_field_name, add_gas_fluxes_param, UNKNOWN_CMEPS_FIELD
 +use MOM_cap_gtracer_flux,     only: atmos_ocean_fluxes_calc
@@ -38,16 +37,41 @@ index 2841c71..bda32b6 100644
  use, intrinsic :: iso_fortran_env, only: output_unit
  
  use ESMF,  only: ESMF_ClockAdvance, ESMF_ClockGet, ESMF_ClockPrint, ESMF_VMget
-@@ -392,6 +404,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -95,12 +106,21 @@ implicit none; private
+ public SetServices
+ public SetVM
+ 
+-!> Internal state type with pointers to three types defined by MOM.
++! > Internal state type with pointers to types defined by MOM.
++#ifdef _USE_GENERIC_TRACER
++type ocean_internalstate_type
++  type(ocean_public_type),       pointer :: ocean_public_type_ptr
++  type(ocean_state_type),        pointer :: ocean_state_type_ptr
++  type(ice_ocean_boundary_type), pointer :: ice_ocean_boundary_type_ptr
++  type(coupler_2d_bc_type),      pointer :: coupler_2d_bc_type_ptr
++end type
++#else
+ type ocean_internalstate_type
+   type(ocean_public_type),       pointer :: ocean_public_type_ptr
+   type(ocean_state_type),        pointer :: ocean_state_type_ptr
+   type(ice_ocean_boundary_type), pointer :: ice_ocean_boundary_type_ptr
+ end type
++#endif
+ 
+ !>  Wrapper-derived type required to associate an internal state instance
+ !! with the ESMF/NUOPC component
+@@ -392,6 +412,10 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
    type (ocean_public_type),      pointer :: ocean_public => NULL()
    type (ocean_state_type),       pointer :: ocean_state => NULL()
    type(ice_ocean_boundary_type), pointer :: Ice_ocean_boundary => NULL()
++  type(coupler_1d_bc_type),      pointer :: gas_fields_atm => NULL()
 +  type(coupler_1d_bc_type),      pointer :: gas_fields_ocn => NULL()
 +  type(coupler_1d_bc_type),      pointer :: gas_fluxes => NULL()
++  type(coupler_2d_bc_type),      pointer :: atm_fields => NULL()
    type(ocean_internalstate_wrapper)      :: ocean_internalstate
    type(ocean_grid_type),         pointer :: ocean_grid => NULL()
    type(directories)                      :: dirs
-@@ -423,6 +437,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -423,6 +447,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
    character(len=512)                     :: restartfile          ! Path/Name of restart file
    character(len=2048)                    :: restartfiles         ! Path/Name of restart files
                                                                   ! (same as restartfile if single restart file)
@@ -55,7 +79,7 @@ index 2841c71..bda32b6 100644
    character(len=*), parameter            :: subname='(MOM_cap:InitializeAdvertise)'
    character(len=32)                      :: calendar
    character(len=:), allocatable          :: rpointer_filename
-@@ -498,6 +513,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -498,6 +523,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
    if (chkerr(rc,__LINE__,u_FILE_u)) return
    call MOM_infra_init(mpi_comm_mom)
  
@@ -64,7 +88,7 @@ index 2841c71..bda32b6 100644
    ! determine the calendar
    if (cesm_coupled) then
      call NUOPC_CompAttributeGet(gcomp, name="calendar", value=cvalue, &
-@@ -629,13 +646,46 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -629,13 +656,44 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
  
    endif
  
@@ -85,8 +109,7 @@ index 2841c71..bda32b6 100644
    ocean_public%is_ocean_pe = .true.
 +#ifdef _USE_GENERIC_TRACER
 +  ! Initialise structures for extra tracer fluxes
-+  ! See https://github.com/NOAA-GFDL/FMScoupler/blob/93ce3642a7951eb11d7d39441911717923dfc768/full/coupler_main.F90#L1689
-+  call gas_exchange_init(gas_fields_ocn=gas_fields_ocn, gas_fluxes=gas_fluxes)
++  call gas_exchange_init(gas_fields_atm=gas_fields_atm, gas_fields_ocn=gas_fields_ocn, gas_fluxes=gas_fluxes)
 +
 +  if (cesm_coupled .and. len_trim(inst_suffix)>0) then
 +    call ocean_model_init(ocean_public, ocean_state, time0, time_start, gas_fields_ocn=gas_fields_ocn, &
@@ -97,7 +120,6 @@ index 2841c71..bda32b6 100644
 +  endif
 +
 +  ! Enable data override via the data_table using the component name 'OCN'
-+  ! See https://github.com/NOAA-GFDL/FMScoupler/blob/93ce3642a7951eb11d7d39441911717923dfc768/full/coupler_main.F90#L1826
 +  call get_ocean_grid(ocean_state, ocean_grid)
 +  call data_override_init(ocean_grid%Domain)
 +#else
@@ -111,23 +133,31 @@ index 2841c71..bda32b6 100644
  
    ! GMM, this call is not needed in CESM. Check with EMC if it can be deleted.
    call ocean_model_flux_init(ocean_state)
-@@ -702,6 +752,23 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -702,6 +760,31 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
      Ice_ocean_boundary%hcond           = 0.0
    endif
  
 +#ifdef _USE_GENERIC_TRACER
-+  ! Allocate fields and register diags for extra tracer fluxes in Ice_ocean_boundary
-+  ! See https://github.com/NOAA-GFDL/FMScoupler/blob/77618869f48507c8629f28457cb701e25e1ea4fc/full/ice_ocean_flux_exchange.F90#L165
-+  if (.not. coupler_type_initialized(Ice_ocean_boundary%fluxes)) &
-+    call coupler_type_spawn(gas_fluxes, Ice_ocean_boundary%fluxes, (/isc,isc,iec,iec/), &
-+          (/jsc,jsc,jec,jec/), suffix='_ice_ocn')
++  ! Allocate fields for extra tracer fluxes in Ice_ocean_boundary
++  ! Annoyingly, spawning doesn't copy param array, so add manually
++  call coupler_type_spawn(gas_fluxes, Ice_ocean_boundary%fluxes, (/isc,isc,iec,iec/), &
++        (/jsc,jsc,jec,jec/), suffix='_ice_ocn')
++  call add_gas_fluxes_param(Ice_ocean_boundary%fluxes)
 +
-+    ! Annoyingly, spawning does not copy the param array, so add manually
-+    call add_gas_fluxes_param(Ice_ocean_boundary%fluxes)
++  ! Initialise structure for atmos fields related to extra tracer fluxes
++  ! This is set in the ESMF Internal State to be accessed elsewhere
++  ! TODO: should we deallocate atm_fields in a finalise step? Ice_ocean_boundary is handled
++  ! in a similar way and does not appear to be deallocated.
++  allocate(atm_fields)
++  ocean_internalstate%ptr%coupler_2d_bc_type_ptr => atm_fields
++  call coupler_type_spawn(gas_fields_atm, atm_fields, (/isc,isc,iec,iec/), &
++        (/jsc,jsc,jec,jec/), suffix='_atm')
 +
++  ! Register diagnosics for extra tracer flux structures
 +  call coupler_type_set_diags(Ice_ocean_boundary%fluxes, "ocean_flux", ocean_public%axes(1:2), time_start)
++  call coupler_type_set_diags(atm_fields, "atmos_sfc", ocean_public%axes(1:2), time_start)
 +
-+  ! Restore fields from restart files
++  ! Restore ocean fields related to extra tracer fluxes from restart files
 +  call get_MOM_input(dirs=dirs)
 +  call gas_fields_restore(ocean_public%fields, ocean_public%domain, dirs%restart_input_dir)
 +#endif
@@ -135,7 +165,7 @@ index 2841c71..bda32b6 100644
    call query_ocean_state(ocean_state, use_waves=use_waves, wave_method=wave_method)
    if (use_waves) then
      if (wave_method == "EFACTOR") then
-@@ -773,6 +840,19 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -773,6 +856,19 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
      endif
    endif
  
@@ -155,7 +185,7 @@ index 2841c71..bda32b6 100644
    !--------- export fields -------------
    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "ocean_mask"                 , "will provide")
    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "sea_surface_temperature"    , "will provide")
-@@ -784,6 +864,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -784,6 +880,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "freezing_melting_potential" , "will provide")
    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_bldepth"                 , "will provide")
  
@@ -164,12 +194,11 @@ index 2841c71..bda32b6 100644
    do n = 1,fldsToOcn_num
      call NUOPC_Advertise(importState, standardName=fldsToOcn(n)%stdname, name=fldsToOcn(n)%shortname, rc=rc)
      if (ChkErr(rc,__LINE__,u_FILE_u)) return
-@@ -1487,11 +1569,15 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1487,11 +1585,14 @@ subroutine ModelAdvance(gcomp, rc)
    type (ocean_public_type),      pointer :: ocean_public       => NULL()
    type (ocean_state_type),       pointer :: ocean_state        => NULL()
    type(ice_ocean_boundary_type), pointer :: Ice_ocean_boundary => NULL()
-+  type(coupler_1d_bc_type),      pointer :: gas_fields_atm => NULL()
-+  type(coupler_2d_bc_type)               :: atm_fields
++  type(coupler_2d_bc_type),      pointer :: atm_fields         => NULL()
    type(ocean_internalstate_wrapper)      :: ocean_internalstate
    type(ocean_grid_type)        , pointer :: ocean_grid
    type(time_type)                        :: Time
@@ -180,7 +209,14 @@ index 2841c71..bda32b6 100644
    integer                                :: dth, dtm, dts
    integer                                :: nc
    type(ESMF_Time)                        :: MyTime
-@@ -1509,6 +1595,7 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1503,12 +1604,13 @@ subroutine ModelAdvance(gcomp, rc)
+   integer                                :: writeunit
+   integer                                :: localPet
+   type(ESMF_VM)                          :: vm
+-  integer                                :: n, i
++  integer                                :: m, n, i
+   character(240)                         :: import_timestr, export_timestr
+   character(len=128)                     :: fldname
    character(len=*),parameter             :: subname='(MOM_cap:ModelAdvance)'
    character(len=8)                       :: suffix
    character(len=:), allocatable          :: rpointer_filename
@@ -188,7 +224,7 @@ index 2841c71..bda32b6 100644
    integer                                :: num_rest_files
  
    rc = ESMF_SUCCESS
-@@ -1542,6 +1629,7 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1542,6 +1644,7 @@ subroutine ModelAdvance(gcomp, rc)
  
    Time_step_coupled = esmf2fms_time(timeStep)
    Time = esmf2fms_time(currTime)
@@ -196,21 +232,12 @@ index 2841c71..bda32b6 100644
  
    !---------------
    ! Apply ocean lag for startup runs:
-@@ -1617,8 +1705,45 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1617,8 +1720,40 @@ subroutine ModelAdvance(gcomp, rc)
      ! Import data
      !---------------
  
 +#ifdef _USE_GENERIC_TRACER
-+    ! gas_fields_atm was already initialised in InitializeAdvertise. This just returns the pointer.
-+    call gas_exchange_init(gas_fields_atm=gas_fields_atm)
-+
-+    ! Spawn 2D version of gas_fields_atm to unpack coupled fields into
-+    call get_domain_extent(ocean_public%domain, isc, iec, jsc, jec)
-+    call coupler_type_spawn(gas_fields_atm, atm_fields, (/isc,isc,iec,iec/), (/jsc,jsc,jec,jec/), &
-+          suffix = '_atm')
-+
-+    ! TODO: dts: register diagnostics? Something like
-+    ! call coupler_type_set_diags(atm_fields, "ocean_flux", ocean_public%axes(1:2), Time_import)
++    atm_fields => ocean_internalstate%ptr%coupler_2d_bc_type_ptr
 +
 +    call mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary, cesm_coupled, &
 +          atm_fields=atm_fields, rc=rc)
@@ -219,22 +246,26 @@ index 2841c71..bda32b6 100644
 +    ! Potentially override atm_fields from data_table.
 +    call coupler_type_data_override('OCN', atm_fields, Time_import)
 +
-+    ! TODO: dts: send atm_fields diagnostics? Something like
-+    ! call coupler_type_send_data(atm_fields, Time_import)
-+
 +    ! Potentially override ice_ocean_boundary%fluxes from data_table.
-+    ! Doing this before atmos_ocean_fluxes_calc call avoids unnecessary calculation of overridden fluxes
-+    call coupler_type_data_override('OCN', ice_ocean_boundary%fluxes, Time_import)
++    ! Doing this before atmos_ocean_fluxes_calc call avoids unnecessary calculation of overridden fluxes.
++    ! However, we cannot use coupler_type_data_override here since it does not set the override flag on
++    ! overridden fields
++    do n = 1, ice_ocean_boundary%fluxes%num_bcs
++      do m = 1, ice_ocean_boundary%fluxes%bc(n)%num_fields
++        call data_override('OCN', ice_ocean_boundary%fluxes%bc(n)%field(m)%name, &
++              ice_ocean_boundary%fluxes%bc(n)%field(m)%values, Time_import, &
++              override=ice_ocean_boundary%fluxes%bc(n)%field(m)%override)
++      enddo
++    enddo
 +
 +    ! Calculate the extra tracer fluxes
++    call get_domain_extent(ocean_public%domain, isc, iec, jsc, jec)
 +    call atmos_ocean_fluxes_calc(atm_fields, ocean_public%fields, ice_ocean_boundary%fluxes, &
 +          ice_ocean_boundary%ice_fraction, isc, iec, jsc, jec)
 +
-+    ! Deallocate atm_fields - is this needed?
-+    call coupler_type_destructor(atm_fields)
-+
-+    ! TODO: dts: send ice_ocean_boundary%fluxes diagnostics? Something like
-+    ! call coupler_type_send_data(ice_ocean_boundary%fluxes, Time_import)
++    ! Send diagnostics
++    call coupler_type_send_data(atm_fields, Time_import)
++    call coupler_type_send_data(ice_ocean_boundary%fluxes, Time_import)
 +#else
      call mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary, cesm_coupled, rc=rc)
      if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -242,7 +273,7 @@ index 2841c71..bda32b6 100644
  
      !---------------
      ! Update MOM6
-@@ -1667,7 +1792,7 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1667,7 +1802,7 @@ subroutine ModelAdvance(gcomp, rc)
        ! determine restart filename
        call ESMF_ClockGetNextTime(clock, MyTime, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -251,7 +282,7 @@ index 2841c71..bda32b6 100644
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
  
        if (cesm_coupled) then
-@@ -1725,6 +1850,14 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1725,6 +1860,14 @@ subroutine ModelAdvance(gcomp, rc)
  
        endif
  
@@ -266,7 +297,7 @@ index 2841c71..bda32b6 100644
        if (is_root_pe()) then
          write(stdout,*) subname//' writing restart file ',trim(restartname)
        endif
-@@ -1953,6 +2086,7 @@ subroutine ocean_model_finalize(gcomp, rc)
+@@ -1953,6 +2096,7 @@ subroutine ocean_model_finalize(gcomp, rc)
    integer                                :: alarmCount
    character(len=64)                      :: timestamp
    logical                                :: write_restart
@@ -274,7 +305,7 @@ index 2841c71..bda32b6 100644
    character(len=*),parameter  :: subname='(MOM_cap:ocean_model_finalize)'
  
    if (is_root_pe()) then
-@@ -1984,6 +2118,18 @@ subroutine ocean_model_finalize(gcomp, rc)
+@@ -1984,6 +2128,18 @@ subroutine ocean_model_finalize(gcomp, rc)
  
    call ocean_model_end(ocean_public, ocean_State, Time, write_restart=write_restart)
  
