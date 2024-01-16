@@ -42,20 +42,20 @@ type(coupler_1d_bc_type), target :: ex_gas_fields_atm ! tracer fields in atm
     !< Structure containing atmospheric surface variables that are used in the
     !! calculation of the atmosphere-ocean gas fluxes, as well as parameters
     !! regulating these fluxes. The fields in this structure are never actually
-    !! set, but the structure is used for initialisation of components and to 
+    !! set, but the structure is used for initialisation of components and to
     !! spawn other structure whose fields are set.
 type(coupler_1d_bc_type), target :: ex_gas_fields_ocn ! tracer fields atop the ocean
     !< Structure containing ocean surface variables that are used in the
     !! calculation of the atmosphere-ocean gas fluxes, as well as parameters
     !! regulating these fluxes. The fields in this structure are never actually
-    !! set, but the structure is used for initialisation of components and to 
+    !! set, but the structure is used for initialisation of components and to
     !! spawn other structure whose fields are set.
 type(coupler_1d_bc_type), target :: ex_gas_fluxes ! tracer fluxes between the atm and ocean
     !< A structure for exchanging gas or tracer fluxes between the atmosphere and
-    !! ocean, defined by the field table, as well as a place holder of 
-    !! intermediate calculations, such as piston velocities, and parameters that 
-    !! impact the fluxes. The fields in this structure are never actually set, 
-    !! but the structure is used for initialisation of components and to spawn 
+    !! ocean, defined by the field table, as well as a place holder of
+    !! intermediate calculations, such as piston velocities, and parameters that
+    !! impact the fluxes. The fields in this structure are never actually set,
+    !! but the structure is used for initialisation of components and to spawn
     !! other structure whose fields are set.
 
 contains
@@ -100,7 +100,7 @@ subroutine gas_fields_restore(gas_fields, domain, directory)
 
   ! local variables
   type(FmsNetcdfDomainFile_t), dimension(:), pointer :: ocn_bc_restart => NULL() !< Structures describing the restart files
-  integer                                            :: num_ocn_bc_restart = 0   !< The number of restart files to use
+  integer                                            :: num_ocn_bc_restart       !< The number of restart files to use
   integer                                            :: n
 
   call coupler_type_register_restarts(gas_fields, ocn_bc_restart, num_ocn_bc_restart, &
@@ -131,7 +131,7 @@ subroutine gas_fields_restart(gas_fields, domain, directory)
 
   ! local variables
   type(FmsNetcdfDomainFile_t), dimension(:), pointer :: ocn_bc_restart => NULL() !< Structures describing the restart files
-  integer                                            :: num_ocn_bc_restart = 0   !< The number of restart files to use
+  integer                                            :: num_ocn_bc_restart       !< The number of restart files to use
   integer                                            :: n
 
   call coupler_type_register_restarts(gas_fields, ocn_bc_restart, num_ocn_bc_restart, &
@@ -164,7 +164,7 @@ subroutine add_domain_dimension_data(fileobj)
   call fms2_get_global_io_domain_indices(fileobj, "yaxis_1", is, ie, indices=buffer)
   call fms2_write_data(fileobj, "yaxis_1", buffer)
   deallocate(buffer)
-  
+
 end subroutine add_domain_dimension_data
 
 !> Retrieve param array from field_manager and add to FMS coupler_bc_type. This is
@@ -210,18 +210,19 @@ function get_coupled_field_name(name)
   character(len=64)                  :: get_coupled_field_name !< CMEPS standard_name
   character(len=*), intent(in)       :: name                   !< gtracer flux name
 
+  ! Add other coupled field names here
   select case(trim(name))
     case( 'co2_flux' )
       get_coupled_field_name = "Sa_co2prog"
-    case( 'o2_flux' )
-      get_coupled_field_name = "Sa_o2"
     case default
       get_coupled_field_name = UNKNOWN_CMEPS_FIELD
   end select
 end function get_coupled_field_name
 
 !> \brief Calculate the FMS coupler_bc_type ocean tracer fluxes. Units should be mol/m^2/s.
-!! Upward flux is positive. This routine was copied from FMScoupler at
+!! Upward flux is positive.
+!!
+!! This routine was copied from FMScoupler at
 !! https://github.com/NOAA-GFDL/FMScoupler/blob/6442d387153064644325c96a5e9e2935139d5e3c/full/atmos_ocean_fluxes_calc.F90
 !! and subsequently modified in the following ways:
 !! - Operate on 2D inputs, rather than 1D
@@ -515,6 +516,9 @@ end subroutine  atmos_ocean_fluxes_calc
 !! \f]
 !! where \f$k_g\f$ and \f$k_l\f$ are the exchange constants for the gas and liquid
 !! phases, respectively.
+!!
+!! This routine was copied from FMScoupler at
+!! https://github.com/NOAA-GFDL/FMScoupler/blob/6442d387153064644325c96a5e9e2935139d5e3c/full/atmos_ocean_fluxes_calc.F90
 real function calc_kw(tk, p, u10, h, vb, mw, sc_w, ustar, cd_m)
   real, intent(in) :: tk !< temperature at surface in kelvin
   real, intent(in) :: p !< pressure at surface in pa
@@ -541,6 +545,9 @@ end function calc_kw
 !> Calculate \f$k_a\f$
 !!
 !! See calc_kw
+!!
+!! This routine was copied from FMScoupler at
+!! https://github.com/NOAA-GFDL/FMScoupler/blob/6442d387153064644325c96a5e9e2935139d5e3c/full/atmos_ocean_fluxes_calc.F90
 real function calc_ka(t, p, mw, vb, u10, ustar, cd_m)
   real, intent(in) :: t !< temperature at surface in C
   real, intent(in) :: p !< pressure at surface in pa
@@ -574,6 +581,9 @@ end function calc_ka
 !!
 !! See calc_kw, and Nightingale, Global Biogeochemical Cycles, 2000
 !! (https://doi.org/10.1029/1999GB900091)
+!!
+!! This routine was copied from FMScoupler at
+!! https://github.com/NOAA-GFDL/FMScoupler/blob/6442d387153064644325c96a5e9e2935139d5e3c/full/atmos_ocean_fluxes_calc.F90
 real function calc_kl(t, v, sc)
   real, intent(in) :: t !< temperature at surface in C
   real, intent(in) :: v !< wind speed at surface in m/s
@@ -583,6 +593,9 @@ real function calc_kl(t, v, sc)
 end function calc_kl
 
 !> Schmidt number of the gas in air
+!!
+!! This routine was copied from FMScoupler at
+!! https://github.com/NOAA-GFDL/FMScoupler/blob/6442d387153064644325c96a5e9e2935139d5e3c/full/atmos_ocean_fluxes_calc.F90
 real function schmidt_g(t, p, mw, vb)
   real, intent(in) :: t !< temperature at surface in C
   real, intent(in) :: p !< pressure at surface in pa
@@ -597,6 +610,9 @@ real function schmidt_g(t, p, mw, vb)
 end function schmidt_g
 
 !> From Fuller, Industrial & Engineering Chemistry (https://doi.org/10.1021/ie50677a007)
+!!
+!! This routine was copied from FMScoupler at
+!! https://github.com/NOAA-GFDL/FMScoupler/blob/6442d387153064644325c96a5e9e2935139d5e3c/full/atmos_ocean_fluxes_calc.F90
 real function d_air(t, p, mw, vb)
   real, intent(in) :: t  !< temperature in c
   real, intent(in) :: p  !< pressure in pa
@@ -617,6 +633,9 @@ real function d_air(t, p, mw, vb)
 end function d_air
 
 !> kinematic viscosity in air
+!!
+!! This routine was copied from FMScoupler at
+!! https://github.com/NOAA-GFDL/FMScoupler/blob/6442d387153064644325c96a5e9e2935139d5e3c/full/atmos_ocean_fluxes_calc.F90
 real function p_air(t)
   real, intent(in) :: t
 
@@ -628,12 +647,18 @@ real function p_air(t)
 end function p_air
 
 !> Kinematic viscosity in air (\f$m^2/s\f$
+!!
+!! This routine was copied from FMScoupler at
+!! https://github.com/NOAA-GFDL/FMScoupler/blob/6442d387153064644325c96a5e9e2935139d5e3c/full/atmos_ocean_fluxes_calc.F90
 real function v_air(t)
   real, intent(in) :: t !< temperature in C
   v_air = n_air(t)/p_air(t)
 end function v_air
 
 !> dynamic viscosity in air
+!!
+!! This routine was copied from FMScoupler at
+!! https://github.com/NOAA-GFDL/FMScoupler/blob/6442d387153064644325c96a5e9e2935139d5e3c/full/atmos_ocean_fluxes_calc.F90
 real function n_air(t)
   real, intent(in) :: t !< temperature in C
 

@@ -1,5 +1,5 @@
 diff --git a/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90 b/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90.new
-index 2841c71..29cccaf 100644
+index 2841c71..786356b 100644
 --- a/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90
 +++ b/MOM6/config_src/drivers/nuopc_cap/mom_cap.F90.new
 @@ -2,8 +2,9 @@
@@ -37,30 +37,23 @@ index 2841c71..29cccaf 100644
  use, intrinsic :: iso_fortran_env, only: output_unit
  
  use ESMF,  only: ESMF_ClockAdvance, ESMF_ClockGet, ESMF_ClockPrint, ESMF_VMget
-@@ -95,12 +106,21 @@ implicit none; private
+@@ -95,11 +106,14 @@ implicit none; private
  public SetServices
  public SetVM
  
 -!> Internal state type with pointers to three types defined by MOM.
-+! > Internal state type with pointers to types defined by MOM.
-+#ifdef _USE_GENERIC_TRACER
-+type ocean_internalstate_type
-+  type(ocean_public_type),       pointer :: ocean_public_type_ptr
-+  type(ocean_state_type),        pointer :: ocean_state_type_ptr
-+  type(ice_ocean_boundary_type), pointer :: ice_ocean_boundary_type_ptr
-+  type(coupler_2d_bc_type),      pointer :: coupler_2d_bc_type_ptr
-+end type
-+#else
++!> Internal state type with pointers to types defined by MOM.
  type ocean_internalstate_type
    type(ocean_public_type),       pointer :: ocean_public_type_ptr
    type(ocean_state_type),        pointer :: ocean_state_type_ptr
    type(ice_ocean_boundary_type), pointer :: ice_ocean_boundary_type_ptr
- end type
++#ifdef _USE_GENERIC_TRACER
++  type(coupler_2d_bc_type),      pointer :: coupler_2d_bc_type_ptr
 +#endif
+ end type
  
  !>  Wrapper-derived type required to associate an internal state instance
- !! with the ESMF/NUOPC component
-@@ -392,6 +412,10 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -392,6 +406,10 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
    type (ocean_public_type),      pointer :: ocean_public => NULL()
    type (ocean_state_type),       pointer :: ocean_state => NULL()
    type(ice_ocean_boundary_type), pointer :: Ice_ocean_boundary => NULL()
@@ -71,7 +64,7 @@ index 2841c71..29cccaf 100644
    type(ocean_internalstate_wrapper)      :: ocean_internalstate
    type(ocean_grid_type),         pointer :: ocean_grid => NULL()
    type(directories)                      :: dirs
-@@ -423,6 +447,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -423,6 +441,7 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
    character(len=512)                     :: restartfile          ! Path/Name of restart file
    character(len=2048)                    :: restartfiles         ! Path/Name of restart files
                                                                   ! (same as restartfile if single restart file)
@@ -79,7 +72,7 @@ index 2841c71..29cccaf 100644
    character(len=*), parameter            :: subname='(MOM_cap:InitializeAdvertise)'
    character(len=32)                      :: calendar
    character(len=:), allocatable          :: rpointer_filename
-@@ -498,6 +523,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -498,6 +517,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
    if (chkerr(rc,__LINE__,u_FILE_u)) return
    call MOM_infra_init(mpi_comm_mom)
  
@@ -88,7 +81,7 @@ index 2841c71..29cccaf 100644
    ! determine the calendar
    if (cesm_coupled) then
      call NUOPC_CompAttributeGet(gcomp, name="calendar", value=cvalue, &
-@@ -629,13 +656,44 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -629,13 +650,44 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
  
    endif
  
@@ -133,7 +126,7 @@ index 2841c71..29cccaf 100644
  
    ! GMM, this call is not needed in CESM. Check with EMC if it can be deleted.
    call ocean_model_flux_init(ocean_state)
-@@ -702,6 +760,31 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -702,6 +754,31 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
      Ice_ocean_boundary%hcond           = 0.0
    endif
  
@@ -165,7 +158,7 @@ index 2841c71..29cccaf 100644
    call query_ocean_state(ocean_state, use_waves=use_waves, wave_method=wave_method)
    if (use_waves) then
      if (wave_method == "EFACTOR") then
-@@ -773,6 +856,19 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -773,6 +850,19 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
      endif
    endif
  
@@ -185,7 +178,7 @@ index 2841c71..29cccaf 100644
    !--------- export fields -------------
    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "ocean_mask"                 , "will provide")
    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "sea_surface_temperature"    , "will provide")
-@@ -784,6 +880,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
+@@ -784,6 +874,8 @@ subroutine InitializeAdvertise(gcomp, importState, exportState, clock, rc)
    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "freezing_melting_potential" , "will provide")
    call fld_list_add(fldsFrOcn_num, fldsFrOcn, "So_bldepth"                 , "will provide")
  
@@ -194,7 +187,7 @@ index 2841c71..29cccaf 100644
    do n = 1,fldsToOcn_num
      call NUOPC_Advertise(importState, standardName=fldsToOcn(n)%stdname, name=fldsToOcn(n)%shortname, rc=rc)
      if (ChkErr(rc,__LINE__,u_FILE_u)) return
-@@ -1487,11 +1585,14 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1487,11 +1579,14 @@ subroutine ModelAdvance(gcomp, rc)
    type (ocean_public_type),      pointer :: ocean_public       => NULL()
    type (ocean_state_type),       pointer :: ocean_state        => NULL()
    type(ice_ocean_boundary_type), pointer :: Ice_ocean_boundary => NULL()
@@ -209,7 +202,7 @@ index 2841c71..29cccaf 100644
    integer                                :: dth, dtm, dts
    integer                                :: nc
    type(ESMF_Time)                        :: MyTime
-@@ -1503,12 +1604,13 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1503,12 +1598,13 @@ subroutine ModelAdvance(gcomp, rc)
    integer                                :: writeunit
    integer                                :: localPet
    type(ESMF_VM)                          :: vm
@@ -224,7 +217,7 @@ index 2841c71..29cccaf 100644
    integer                                :: num_rest_files
  
    rc = ESMF_SUCCESS
-@@ -1542,6 +1644,7 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1542,6 +1638,7 @@ subroutine ModelAdvance(gcomp, rc)
  
    Time_step_coupled = esmf2fms_time(timeStep)
    Time = esmf2fms_time(currTime)
@@ -232,7 +225,7 @@ index 2841c71..29cccaf 100644
  
    !---------------
    ! Apply ocean lag for startup runs:
-@@ -1617,8 +1720,40 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1617,8 +1714,40 @@ subroutine ModelAdvance(gcomp, rc)
      ! Import data
      !---------------
  
@@ -273,7 +266,7 @@ index 2841c71..29cccaf 100644
  
      !---------------
      ! Update MOM6
-@@ -1667,7 +1802,7 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1667,7 +1796,7 @@ subroutine ModelAdvance(gcomp, rc)
        ! determine restart filename
        call ESMF_ClockGetNextTime(clock, MyTime, rc=rc)
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
@@ -282,7 +275,7 @@ index 2841c71..29cccaf 100644
        if (ChkErr(rc,__LINE__,u_FILE_u)) return
  
        if (cesm_coupled) then
-@@ -1725,6 +1860,14 @@ subroutine ModelAdvance(gcomp, rc)
+@@ -1725,6 +1854,14 @@ subroutine ModelAdvance(gcomp, rc)
  
        endif
  
@@ -297,7 +290,7 @@ index 2841c71..29cccaf 100644
        if (is_root_pe()) then
          write(stdout,*) subname//' writing restart file ',trim(restartname)
        endif
-@@ -1953,6 +2096,7 @@ subroutine ocean_model_finalize(gcomp, rc)
+@@ -1953,6 +2090,7 @@ subroutine ocean_model_finalize(gcomp, rc)
    integer                                :: alarmCount
    character(len=64)                      :: timestamp
    logical                                :: write_restart
@@ -305,7 +298,7 @@ index 2841c71..29cccaf 100644
    character(len=*),parameter  :: subname='(MOM_cap:ocean_model_finalize)'
  
    if (is_root_pe()) then
-@@ -1984,6 +2128,18 @@ subroutine ocean_model_finalize(gcomp, rc)
+@@ -1984,6 +2122,18 @@ subroutine ocean_model_finalize(gcomp, rc)
  
    call ocean_model_end(ocean_public, ocean_State, Time, write_restart=write_restart)
  

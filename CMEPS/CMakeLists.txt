@@ -21,6 +21,7 @@ target_sources(OM3_cmeps PRIVATE
   CMEPS/mediator/med_phases_profile_mod.F90
   CMEPS/mediator/esmFldsExchange_hafs_mod.F90
   CMEPS/mediator/med_phases_prep_rof_mod.F90
+  CMEPS/mediator/esmFldsExchange_cesm_mod.F90
   CMEPS/mediator/med_merge_mod.F90
   CMEPS/mediator/med_constants_mod.F90
   CMEPS/mediator/med_kind_mod.F90
@@ -46,7 +47,6 @@ target_sources(OM3_cmeps PRIVATE
   CMEPS/mediator/med_phases_post_rof_mod.F90
   CMEPS/mediator/med_phases_post_wav_mod.F90
 )
-add_patched_source(OM3_cmeps CMEPS/mediator/esmFldsExchange_cesm_mod.F90)
 
 add_patched_source(OM3_cmeps CMEPS/mediator/med_phases_history_mod.F90)
 
