@@ -1,5 +1,5 @@
 diff --git a/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90 b/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90.new
-index db8bc33..843e646 100644
+index db8bc33..a7fe858 100644
 --- a/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90
 +++ b/MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F90.new
 @@ -20,8 +20,15 @@ use MOM_ocean_model_nuopc,     only: ocean_public_type, ocean_state_type
@@ -51,7 +51,7 @@ index db8bc33..843e646 100644
  
    rc = ESMF_SUCCESS
  
-@@ -356,6 +372,44 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
+@@ -356,6 +372,46 @@ subroutine mom_import(ocean_public, ocean_grid, importState, ice_ocean_boundary,
        deallocate(stkx,stky)
    endif
  
@@ -63,21 +63,23 @@ index db8bc33..843e646 100644
 +    ! Set fields in atm_fields from coupler
 +    allocate (work(isc:iec,jsc:jec))
 +    do n = 1, atm_fields%num_bcs
++      if (atm_fields%bc(n)%flux_type .eq. 'air_sea_deposition') then
++        field_index = ind_deposition
++      elseif (atm_fields%bc(n)%flux_type .eq. 'land_sea_runoff') then
++        field_index = ind_runoff
++      else
++        ! This is a gas flux - set ind_u10 and ind_psurf
++        ! Note, we set these fields even though the pcair field may not be set below. This
++        ! is to allow flux calculation with overridden pcair fields
++        field_index = ind_pcair
++        call set_coupler_type_data(sqrt(ice_ocean_boundary%u10_sqr), n, atm_fields, &
++              idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_u10)
++        call set_coupler_type_data(ice_ocean_boundary%p, n, atm_fields, &
++              idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_psurf)
++      endif
++
 +      stdname = get_coupled_field_name(atm_fields%bc(n)%name)
 +      if (stdname /= UNKNOWN_CMEPS_FIELD) then
-+        if (atm_fields%bc(n)%flux_type .eq. 'air_sea_deposition') then
-+          field_index = ind_deposition
-+        elseif (atm_fields%bc(n)%flux_type .eq. 'land_sea_runoff') then
-+          field_index = ind_runoff
-+        else
-+          ! This is a gas flux - set ind_u10 and ind_psurf
-+          field_index = ind_pcair
-+          call set_coupler_type_data(sqrt(ice_ocean_boundary%u10_sqr), n, atm_fields, &
-+                idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_u10)
-+          call set_coupler_type_data(ice_ocean_boundary%p, n, atm_fields, &
-+                idim=(/isc,isc,iec,iec/), jdim=(/jsc,jsc,jec,jec/), field_index=ind_psurf)
-+        endif
-+
 +        call ESMF_LogWrite(trim(subname)//': generic_tracer flux: '//trim(atm_fields%bc(n)%name)//&
 +              ', coupling field '//trim(stdname), ESMF_LOGMSG_INFO)
 +        call state_getimport(importState, trim(stdname), isc, iec, jsc, jec, work, rc=rc)
