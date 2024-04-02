@@ -236,7 +236,6 @@ target_sources(OM3_mom6 PRIVATE
   MOM6/src/tracer/ideal_age_example.F90
   MOM6/src/tracer/ISOMIP_tracer.F90
   MOM6/src/tracer/MOM_CFC_cap.F90
-  MOM6/src/tracer/MOM_generic_tracer.F90
   MOM6/src/tracer/MOM_hor_bnd_diffusion.F90
   MOM6/src/tracer/MOM_neutral_diffusion.F90
   MOM6/src/tracer/MOM_OCMIP2_CFC.F90
@@ -369,6 +368,7 @@ add_patched_source(OM3_mom6 MOM6/config_src/drivers/nuopc_cap/mom_cap_methods.F9
 add_patched_source(OM3_mom6 MOM6/config_src/drivers/nuopc_cap/mom_ocean_model_nuopc.F90)
 add_patched_source(OM3_mom6 MOM6/config_src/infra/FMS1/MOM_couplertype_infra.F90)
 add_patched_source(OM3_mom6 MOM6/src/framework/MOM_coupler_types.F90)
+add_patched_source(OM3_mom6 MOM6/src/tracer/MOM_generic_tracer.F90)
 
 ### Install and Export
 
