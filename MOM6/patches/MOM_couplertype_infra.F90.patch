@@ -1,7 +1,7 @@
-diff --git a/MOM6/config_src/infra/FMS1/MOM_couplertype_infra.F90 b/MOM6/config_src/infra/FMS1/MOM_couplertype_infra.F90.new
-index 637f2b5..0fb57c9 100644
---- a/MOM6/config_src/infra/FMS1/MOM_couplertype_infra.F90
-+++ b/MOM6/config_src/infra/FMS1/MOM_couplertype_infra.F90.new
+diff --git a/MOM6/config_src/infra/FMS2/MOM_couplertype_infra.F90 b/MOM6/config_src/infra/FMS2/MOM_couplertype_infra.F90.new
+index 3bcccc1..50fd5b0 100644
+--- a/MOM6/config_src/infra/FMS2/MOM_couplertype_infra.F90
++++ b/MOM6/config_src/infra/FMS2/MOM_couplertype_infra.F90.new
 @@ -9,7 +9,10 @@ use coupler_types_mod, only : coupler_type_write_chksums, coupler_type_redistrib
  use coupler_types_mod, only : coupler_type_increment_data, coupler_type_rescale_data
  use coupler_types_mod, only : coupler_type_extract_data, coupler_type_set_data
