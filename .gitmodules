@@ -18,4 +18,4 @@
 	url = https://github.com/ESCOMP/WW3
 [submodule "MOM6/GFDL_generic_tracers"]
 	path = MOM6/GFDL_generic_tracers
-	url = https://github.com/COSIMA/GFDL_generic_tracers.git
+	url = https://github.com/ACCESS-NRI/GFDL-generic-tracers.git
