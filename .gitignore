@@ -5,3 +5,4 @@ Release/*
 CMakeUserPresets.json
 **/make_patches.sh
 .fortls
+spack-*
